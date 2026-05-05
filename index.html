@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Greater Jakarta drive-time cartogram. Click anywhere to warp the city around your starting point." />
+    <title>Jakarta Drive-Time</title>
+  </head>
+  <body>
+    <div id="app">
+      <div id="map"></div>
+
+      <!-- Top-left header -->
+      <header class="map-header">
+        <div>
+          <p class="eyebrow">Greater Jakarta</p>
+          <h1>Drive-Time Cartogram</h1>
+        </div>
+        <span id="apiBadge" class="badge">loading…</span>
+      </header>
+
+      <!-- Search bar (top-center) -->
+      <div class="search-wrap">
+        <div class="search-box">
+          <svg class="search-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="8.5" cy="8.5" r="5.5"/><line x1="13" y1="13" x2="18" y2="18"/>
+          </svg>
+          <input id="searchInput" type="search" placeholder="Search Jakarta address…" autocomplete="off" />
+          <div id="suggestions" class="suggestions" hidden></div>
+        </div>
+      </div>
+
+      <!-- Settings button (top-right) -->
+      <div class="top-right-controls">
+        <button id="settingsBtn" class="ghost-btn" title="Settings">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8">
+            <circle cx="10" cy="10" r="2.5"/>
+            <path d="M10 2v2m0 12v2M2 10h2m12 0h2m-3.3-5.7-1.4 1.4M7.1 12.9l-1.4 1.4m9.7 0-1.4-1.4M7.1 7.1 5.7 5.7"/>
+          </svg>
+        </button>
+        <button id="shareBtn" class="ghost-btn" title="Share">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8">
+            <path d="M14 10V14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/>
+            <polyline points="13 2 18 2 18 7"/><line x1="9" y1="11" x2="18" y2="2"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Settings panel -->
+      <div id="settingsPanel" class="settings-panel" hidden>
+        <h3>Settings</h3>
+        <label class="field-label">
+          Travel mode
+          <select id="modeSelect">
+            <option value="drive">Drive</option>
+            <option value="motorcycle">Motorcycle</option>
+            <option value="bicycle">Bicycle</option>
+            <option value="walk">Walk</option>
+          </select>
+        </label>
+        <label class="field-label">
+          Maximum time
+          <select id="maxTimeSelect">
+            <option value="30">30 min</option>
+            <option value="45">45 min</option>
+            <option value="60" selected>60 min</option>
+          </select>
+        </label>
+        <div class="check-group">
+          <label><input type="checkbox" id="warpToggle" checked /> Time warp</label>
+          <label><input type="checkbox" id="contextToggle" checked /> Context layers</label>
+          <label><input type="checkbox" id="roadsToggle" /> Load roads (Overpass)</label>
+        </div>
+        <p class="settings-note" id="settingsNote"></p>
+      </div>
+
+      <!-- Empty-state hint -->
+      <div id="hint" class="hint">
+        <span>Click anywhere on the map to warp Jakarta around your starting point</span>
+      </div>
+
+      <!-- Bottom-left: time readout + view toggle -->
+      <div class="bottom-left">
+        <div id="timeReadout" class="time-readout" hidden>
+          <span class="time-val" id="timeVal">—</span>
+          <span class="time-unit">min from origin</span>
+        </div>
+        <div class="view-toggle">
+          <button id="btnGeo" class="toggle-btn is-active" type="button">Geographic</button>
+          <button id="btnWarp" class="toggle-btn" type="button">Time warp</button>
+        </div>
+      </div>
+
+      <!-- Bottom-right: legend -->
+      <div class="legend">
+        <span class="legend-label">faster</span>
+        <div class="legend-bar"></div>
+        <span class="legend-label">slower</span>
+      </div>
+
+      <!-- Coverage badge -->
+      <div id="coverageBadge" class="coverage-badge" hidden>
+        OSM via Valhalla · estimated road-time · not live traffic
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

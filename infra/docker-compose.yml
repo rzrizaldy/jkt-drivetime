@@ -1,0 +1,24 @@
+services:
+  valhalla:
+    image: ghcr.io/gis-ops/docker-valhalla/valhalla:latest
+    ports:
+      - "8002:8002"
+    volumes:
+      - ../valhalla_tiles:/custom_files
+    environment:
+      - serve_tiles=True
+      # First boot builds tiles from any *.osm.pbf in /custom_files (can take a long time).
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - VALHALLA_URL=http://valhalla:8002
+      - CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
+    depends_on:
+      - valhalla
+    restart: unless-stopped
