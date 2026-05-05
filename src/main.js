@@ -6,6 +6,7 @@ import maplibregl from "maplibre-gl";
 import { nominatimReverse, nominatimSearch } from "./api/nominatim.js";
 import { buildOsrmGrid } from "./api/isochroneOsrm.js";
 import { osrmRoute }     from "./api/osrm.js";
+import { cacheSize, clearCache, getGrid } from "./cache.js";
 import { JAKARTA_CENTER, JABODETABEK_BBOX, useMockMode } from "./config.js";
 import { renderHeatmap } from "./heatmap.js";
 import { sampleTimeSeconds, transformGeoJSON, warpLngLat } from "./map/cartogram.js";
@@ -127,7 +128,9 @@ async function pinOrigin(lon, lat, label, { pushUrl = true } = {}) {
   clearCanvas();
   clearRoute();
 
-  showLoading("Computing drive times…");
+  // Check cache first so we know if this will be instant
+  const cached = !useMockMode() && getGrid(lat, lon);
+  showLoading(cached ? "Loading cached grid…" : "Computing drive times (OSRM)…");
 
   try {
     if (useMockMode()) {
@@ -137,6 +140,7 @@ async function pinOrigin(lon, lat, label, { pushUrl = true } = {}) {
     }
     redraw();
     showReach();
+    updateCacheBadge();
   } catch (err) {
     el.searchMeta.textContent = `Error: ${err.message}`;
     console.error(err);
@@ -335,6 +339,18 @@ function attachEvents() {
   });
 
   // Share
+  // Cache clear button
+  const clearCacheBtn = $("clearCacheBtn");
+  if (clearCacheBtn) {
+    clearCacheBtn.addEventListener("click", () => {
+      clearCache();
+      const info = $("cacheInfo");
+      if (info) info.textContent = "Cache cleared.";
+      setTimeout(() => { if (info) info.textContent = "Computed grids are cached in localStorage for instant re-visit."; }, 2000);
+    });
+  }
+  updateCacheBadge();
+
   el.shareBtn.addEventListener("click", async () => {
     writeUrl();
     try {
@@ -467,6 +483,11 @@ function updateBadge() {
   const mock = useMockMode();
   el.apiBadge.textContent  = mock ? "mock" : "live";
   el.apiBadge.classList.toggle("is-mock", mock);
+}
+
+function updateCacheBadge() {
+  const n = cacheSize();
+  el.searchMeta.textContent = n > 0 ? `${n} origin${n === 1 ? "" : "s"} cached — next visit is instant.` : "";
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────

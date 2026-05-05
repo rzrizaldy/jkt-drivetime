@@ -6,15 +6,19 @@
  */
 
 import { JABODETABEK_BBOX } from "../config.js";
+import { getGrid, setGrid } from "../cache.js";
 import { osrmTable } from "./osrm.js";
 
 const COLS = 10;
 const ROWS = 10;
-const MAX_BATCH = 490; // OSRM public server hard limit
+const MAX_BATCH = 490;
 
 /** @typedef {{ west:number, south:number, east:number, north:number, cols:number, rows:number, times:(number|null)[], origin:{lat:number,lon:number} }} TravelGrid */
 
 /**
+ * Build a TravelGrid from OSRM, with L1+L2 cache.
+ * Subsequent calls for the same origin (~500 m snap) return instantly.
+ *
  * @param {{ lat:number, lon:number }} origin
  * @param {readonly [number,number,number,number]} [bbox]
  * @param {number} [cols]
@@ -22,9 +26,12 @@ const MAX_BATCH = 490; // OSRM public server hard limit
  * @returns {Promise<TravelGrid>}
  */
 export async function buildOsrmGrid(origin, bbox = JABODETABEK_BBOX, cols = COLS, rows = ROWS) {
-  const [west, south, east, north] = bbox;
+  // ── Cache hit ────────────────────────────────────────────────────────────
+  const cached = getGrid(origin.lat, origin.lon);
+  if (cached) return cached;
 
-  // Build targets
+  // ── Cache miss: fetch from OSRM ──────────────────────────────────────────
+  const [west, south, east, north] = bbox;
   const targets = [];
   for (let j = 0; j < rows; j++) {
     const lat = south + (j / Math.max(1, rows - 1)) * (north - south);
@@ -34,7 +41,6 @@ export async function buildOsrmGrid(origin, bbox = JABODETABEK_BBOX, cols = COLS
     }
   }
 
-  // Batch requests if needed
   let times;
   if (targets.length <= MAX_BATCH) {
     times = await osrmTable(origin, targets);
@@ -42,10 +48,13 @@ export async function buildOsrmGrid(origin, bbox = JABODETABEK_BBOX, cols = COLS
     times = [];
     for (let start = 0; start < targets.length; start += MAX_BATCH) {
       const batch = targets.slice(start, start + MAX_BATCH);
-      const batchTimes = await osrmTable(origin, batch);
-      times.push(...batchTimes);
+      times.push(...await osrmTable(origin, batch));
     }
   }
 
-  return { west, south, east, north, cols, rows, times, origin };
+  const grid = { west, south, east, north, cols, rows, times, origin };
+
+  // ── Persist ──────────────────────────────────────────────────────────────
+  setGrid(origin.lat, origin.lon, grid);
+  return grid;
 }

@@ -369,6 +369,27 @@ h1 {
   cursor: pointer;
 }
 
+.micro-btn {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: rgba(255,255,255,0.7);
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.micro-btn:hover { background: rgba(215,92,46,0.1); color: var(--accent); }
+
+.settings-note {
+  margin: 0;
+  font-size: 0.76rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
 /* ── Map frame ───────────────────────────────────────────────────────────── */
 .map-frame {
   position: relative;
