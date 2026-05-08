@@ -170,11 +170,19 @@
           </div>
 
           <div id="tripCard" class="trip-card" hidden>
-            <div class="trip-card-head">
-              <span class="trip-label">Point-to-point insight</span>
-              <strong id="tripMinutes">—</strong>
+            <div class="trip-metric">
+              <span class="trip-label">From</span>
+              <strong id="tripFrom">—</strong>
             </div>
-            <p id="tripSummary">Click a destination on the map to calculate travel time from the pinned origin.</p>
+            <div class="trip-metric">
+              <span class="trip-label">To</span>
+              <strong id="tripTo">—</strong>
+            </div>
+            <div class="trip-metric trip-metric-primary">
+              <span class="trip-label">Time</span>
+              <strong id="tripMinutes">—</strong>
+              <span id="tripDetails">—</span>
+            </div>
           </div>
         </section>
 

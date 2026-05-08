@@ -67,8 +67,10 @@ const el = {
   reachCard:      $("reachCard"),
   reachArea:      $("reachArea"),
   tripCard:       $("tripCard"),
+  tripFrom:       $("tripFrom"),
+  tripTo:         $("tripTo"),
   tripMinutes:    $("tripMinutes"),
-  tripSummary:    $("tripSummary"),
+  tripDetails:    $("tripDetails"),
 };
 
 // ── Map ────────────────────────────────────────────────────────────────────
@@ -454,14 +456,15 @@ function showTripCard({ seconds, meters = null, exact = false, loading = false, 
   const minutes = Number.isFinite(seconds) ? Math.max(1, Math.round(seconds / 60)) : null;
   const mode = modeLabel(state.mode);
   el.tripCard.hidden = false;
+  if (el.tripFrom) el.tripFrom.textContent = state.origin?.label || "Pinned origin";
+  if (el.tripTo) el.tripTo.textContent = destinationLabel || state.destination?.label || "Selected destination";
   el.tripMinutes.textContent = loading && minutes == null
     ? "Calculating..."
     : minutes == null
       ? `>${state.maxMinutes} min`
       : `${exact ? "" : "~"}${minutes} min`;
-  const distanceText = Number.isFinite(meters) && meters > 0 ? `, ${formatDistance(meters)}` : "";
-  const confidence = exact ? "Valhalla route" : "isochrone estimate";
-  el.tripSummary.textContent = `${state.origin.label} to ${destinationLabel}: ${el.tripMinutes.textContent} away by ${mode}${distanceText} (${confidence}).`;
+  const distanceText = Number.isFinite(meters) && meters > 0 ? formatDistance(meters) : "distance pending";
+  if (el.tripDetails) el.tripDetails.textContent = `${distanceText} · ${mode}`;
   el.tooltipMin.textContent = minutes == null ? `>${state.maxMinutes}` : `~${minutes}`;
   el.timeTooltip.hidden = false;
 }
