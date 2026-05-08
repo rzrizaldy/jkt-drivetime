@@ -21,11 +21,16 @@ const CONTOUR_COLOR_EXPRESSION = [
   75, CONTOUR_COLORS[75],
   90, CONTOUR_COLORS[90],
 ];
+const TRAFFIC_PROFILES = Object.freeze({
+  peak: { label: "peak", multiplier: 1.8 },
+  offpeak: { label: "off-peak", multiplier: 1.15 },
+});
 
 // ── State ──────────────────────────────────────────────────────────────────
 const state = {
   origin:     null,   // { lat, lon, label }
   mode:       "drive",
+  traffic:    "peak",
   basemap:    "carto",
   maxMinutes: 60,
   showRings:  true,
@@ -53,6 +58,7 @@ const el = {
   statusText:     $("statusText"),
   ringsToggle:    $("ringsToggle"),
   modeSelect:     $("modeSelect"),
+  trafficSelect:  $("trafficSelect"),
   basemapSelect:  $("basemapSelect"),
   maxTimeRange:   $("maxTimeRange"),
   maxTimeLabel:   $("maxTimeLabel"),
@@ -332,7 +338,8 @@ async function pinOrigin(lon, lat, label, { pushUrl = true, preserveDestination 
       state.grid = cached;
       state.isochrones = cached.isochrones || null;
     } else if (useLiveRoutingMode()) {
-      state.isochrones = await fetchIsochrones({ lat, lon, mode: state.mode, maxMinutes: state.maxMinutes });
+      const rawIsochrones = await fetchIsochrones({ lat, lon, mode: state.mode, maxMinutes: state.maxMinutes });
+      state.isochrones = applyTrafficToIsochrones(rawIsochrones);
       state.grid = buildTravelGridFromIsochrones(
         state.isochrones,
         { lat, lon },
@@ -346,6 +353,7 @@ async function pinOrigin(lon, lat, label, { pushUrl = true, preserveDestination 
       setGrid(lat, lon, state.grid, cacheProfile);
     } else {
       state.grid = buildHistoricalJakartaGrid({ lat, lon }, state.contextRaw || {}, { mode: state.mode });
+      state.grid = applyTrafficToGrid(state.grid);
       setGrid(lat, lon, state.grid, cacheProfile);
     }
     if (seq !== _pinSeq) return;   // a newer pin already took over
@@ -395,7 +403,12 @@ function updateIsochroneData() {
   const src = map.getSource("isochrones-src");
   const ghostSrc = map.getSource("isochrones-ghost-src");
   if (!src) return;
-  const fc = state.isochrones ? sortedIsochrones(state.isochrones) : empty();
+  const fc = state.isochrones
+    ? sortedIsochrones({
+        ...state.isochrones,
+        features: (state.isochrones.features || []).filter((feature) => Number(feature.properties?.contour || 0) <= state.maxMinutes),
+      })
+    : empty();
   src.setData(fc);
   if (ghostSrc) ghostSrc.setData(empty());
   const visibility = state.isochrones && state.showRings ? "visible" : "none";
@@ -448,7 +461,7 @@ async function setDestination(lon, lat, label, { updateLabel = true } = {}) {
     const route = await extractRoute(await fetchRoute({ from: state.origin, to: { lat, lon }, mode: state.mode }));
     if (route.geometry) drawRoute(route.geometry);
     showTripCard({
-      seconds: route.seconds || sampledSeconds,
+      seconds: scaleTrafficSeconds(route.seconds || sampledSeconds),
       meters: route.meters,
       exact: Boolean(route.seconds),
       loading: false,
@@ -478,7 +491,7 @@ function showTripCard({ seconds, meters = null, exact = false, loading = false, 
       ? `>${state.maxMinutes} min`
       : `${exact ? "" : "~"}${minutes} min`;
   const distanceText = Number.isFinite(meters) && meters > 0 ? formatDistance(meters) : "distance pending";
-  if (el.tripDetails) el.tripDetails.textContent = `${distanceText} · ${mode}`;
+  if (el.tripDetails) el.tripDetails.textContent = `${distanceText} · ${mode} · ${trafficProfile().label}`;
   el.tooltipMin.textContent = minutes == null ? `>${state.maxMinutes}` : `~${minutes}`;
   el.timeTooltip.hidden = false;
 }
@@ -715,6 +728,11 @@ function attachEvents() {
     state.mode = el.modeSelect.value;
     if (state.origin) pinOrigin(state.origin.lon, state.origin.lat, state.origin.label, { preserveDestination: Boolean(state.destination) });
   });
+  el.trafficSelect.addEventListener("change", () => {
+    state.traffic = el.trafficSelect.value;
+    if (state.origin) pinOrigin(state.origin.lon, state.origin.lat, state.origin.label, { preserveDestination: Boolean(state.destination) });
+    else writeUrl();
+  });
   el.basemapSelect.addEventListener("change", () => {
     state.basemap = el.basemapSelect.value;
     setBasemapStyle(state.basemap);
@@ -874,6 +892,38 @@ function colorForMinutes(minutes) {
     if (minutes <= next) return CONTOUR_COLORS[next] || CONTOUR_COLORS[prev];
   }
   return CONTOUR_COLORS[stops.at(-1)];
+}
+
+function trafficProfile() {
+  return TRAFFIC_PROFILES[state.traffic] || TRAFFIC_PROFILES.peak;
+}
+
+function scaleTrafficSeconds(seconds) {
+  return Number.isFinite(seconds) ? seconds * trafficProfile().multiplier : seconds;
+}
+
+function applyTrafficToIsochrones(fc) {
+  const multiplier = trafficProfile().multiplier;
+  return {
+    ...fc,
+    features: (fc.features || []).map((feature) => ({
+      ...feature,
+      properties: {
+        ...(feature.properties || {}),
+        contour: Math.round(Number(feature.properties?.contour || 0) * multiplier),
+        traffic_profile: state.traffic,
+      },
+    })),
+  };
+}
+
+function applyTrafficToGrid(grid) {
+  const multiplier = trafficProfile().multiplier;
+  return {
+    ...grid,
+    times: grid.times.map((seconds) => Number.isFinite(seconds) ? seconds * multiplier : seconds),
+    traffic_profile: state.traffic,
+  };
 }
 
 // ── Map helpers ────────────────────────────────────────────────────────────
@@ -1036,7 +1086,9 @@ function updateBadge() {
 }
 
 function gridCacheProfile() {
-  return useLiveRoutingMode() ? `valhalla-iso-${state.mode}-${state.maxMinutes}` : `historical-${state.mode}`;
+  return useLiveRoutingMode()
+    ? `valhalla-iso-${state.mode}-${state.traffic}-${state.maxMinutes}`
+    : `historical-${state.mode}-${state.traffic}`;
 }
 
 function updateCacheBadge() {
@@ -1068,6 +1120,7 @@ function formatDistance(meters) {
 function writeUrl() {
   const p = new URLSearchParams({
     m: state.mode,
+    traffic: state.traffic,
     map: state.basemap,
     t: state.maxMinutes,
     ...(state.origin && { lat: state.origin.lat.toFixed(5), lon: state.origin.lon.toFixed(5) }),
@@ -1079,6 +1132,10 @@ function restoreUrl() {
   const p = new URLSearchParams(location.search);
   if (!p.get("lat") || !p.get("lon")) return false;
   if (p.get("m")) { state.mode = p.get("m"); el.modeSelect.value = state.mode; }
+  if (p.get("traffic") && TRAFFIC_PROFILES[p.get("traffic")]) {
+    state.traffic = p.get("traffic");
+    el.trafficSelect.value = state.traffic;
+  }
   if (p.get("map")) setBasemapStyle(p.get("map"));
   if (p.get("t")) { state.maxMinutes = Number(p.get("t")); el.maxTimeRange.value = String(state.maxMinutes); el.maxTimeLabel.textContent = `${state.maxMinutes} min`; updateLegend(); }
   pinOrigin(Number(p.get("lon")), Number(p.get("lat")), `${(+p.get("lat")).toFixed(4)}, ${(+p.get("lon")).toFixed(4)}`, { pushUrl: false });
