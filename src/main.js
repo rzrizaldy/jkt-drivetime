@@ -12,6 +12,17 @@ import { renderHeatmap } from "./heatmap.js";
 import { buildMeshWarp, buildTravelGridFromIsochrones, sampleTimeSeconds, transformGeoJSONWithMeshWarp } from "./map/cartogram.js";
 import { buildTravelTree } from "./map/travelTree.js";
 
+const CONTOUR_COLOR_EXPRESSION = [
+  "interpolate", ["linear"], ["get", "contour"],
+  10, CONTOUR_COLORS[10],
+  20, CONTOUR_COLORS[20],
+  30, CONTOUR_COLORS[30],
+  45, CONTOUR_COLORS[45],
+  60, CONTOUR_COLORS[60],
+  75, CONTOUR_COLORS[75],
+  90, CONTOUR_COLORS[90],
+];
+
 // ── State ──────────────────────────────────────────────────────────────────
 const state = {
   origin:     null,   // { lat, lon, label }
@@ -25,6 +36,10 @@ const state = {
   meshWarp:   null,
   destination:null,
   trip:       null,
+  dragTarget: null,
+  dragStart:  null,
+  dragMoved:  false,
+  suppressMapClick: false,
   boundaryFc: null,
   contextFc:  { corridors: empty(), congestion: empty(), signals: empty(), labels: empty() },
   contextRaw: null,
@@ -121,24 +136,10 @@ const bootTimer = setInterval(() => {
 
 // ── Map layers ─────────────────────────────────────────────────────────────
 function setupMapLayers() {
-  // Origin marker
+  // Marker sources are declared early, but their visible layers are added last
+  // so the pins stay draggable above the warped polygons and route line.
   addSource("origin-src", { type: "geojson", data: empty() });
-  addLayer({ id: "origin-halo", type: "circle", source: "origin-src",
-    paint: { "circle-radius": 13, "circle-color": "transparent",
-      "circle-stroke-color": "rgba(23,48,77,0.85)", "circle-stroke-width": 3 } });
-  addLayer({ id: "origin-dot", type: "circle", source: "origin-src",
-    paint: { "circle-radius": 5, "circle-color": "#fff8ef" } });
-
   addSource("destination-src", { type: "geojson", data: empty() });
-  addLayer({ id: "destination-halo", type: "circle", source: "destination-src",
-    paint: {
-      "circle-radius": 12,
-      "circle-color": "rgba(223,96,50,0.18)",
-      "circle-stroke-color": "rgba(223,96,50,0.92)",
-      "circle-stroke-width": 3
-    } });
-  addLayer({ id: "destination-dot", type: "circle", source: "destination-src",
-    paint: { "circle-radius": 4.5, "circle-color": "#fff8ef" } });
 
   // Jabodetabek boundary
   addSource("boundary-src", { type: "geojson", data: empty() });
@@ -161,14 +162,21 @@ function setupMapLayers() {
   addSource("isochrones-src", { type: "geojson", data: empty() });
   addLayer({ id: "isochrones-fill", type: "fill", source: "isochrones-src",
     paint: {
-      "fill-color": ["match", ["to-string", ["get", "contour"]], "10", CONTOUR_COLORS[10], "20", CONTOUR_COLORS[20], "30", CONTOUR_COLORS[30], "45", CONTOUR_COLORS[45], "60", CONTOUR_COLORS[60], "#4a678d"],
-      "fill-opacity": ["interpolate", ["linear"], ["get", "contour"], 10, 0.62, 60, 0.28]
+      "fill-color": CONTOUR_COLOR_EXPRESSION,
+      "fill-opacity": ["interpolate", ["linear"], ["get", "contour"], 10, 0.62, 90, 0.24]
     } });
   addLayer({ id: "isochrones-line", type: "line", source: "isochrones-src",
     paint: {
-      "line-color": ["match", ["to-string", ["get", "contour"]], "10", CONTOUR_COLORS[10], "20", CONTOUR_COLORS[20], "30", CONTOUR_COLORS[30], "45", CONTOUR_COLORS[45], "60", CONTOUR_COLORS[60], "#4a678d"],
+      "line-color": CONTOUR_COLOR_EXPRESSION,
       "line-width": ["interpolate", ["linear"], ["zoom"], 8, 1.6, 12, 2.4],
       "line-opacity": 0.86
+    } });
+  addLayer({ id: "isochrones-max-line", type: "line", source: "isochrones-src",
+    filter: ["==", ["get", "contour"], 60],
+    paint: {
+      "line-color": "rgba(23,48,77,0.96)",
+      "line-width": ["interpolate", ["linear"], ["zoom"], 8, 2.4, 12, 4.1],
+      "line-opacity": 0.92
     } });
 
   // Travel-time dendrogram. This is the primary cartogram structure.
@@ -239,6 +247,26 @@ function setupMapLayers() {
   addSource("route-src", { type: "geojson", data: empty() });
   addLayer({ id: "route-line", type: "line", source: "route-src",
     paint: { "line-color": "rgba(23,48,77,0.9)", "line-width": 3, "line-dasharray": [3, 2] } });
+
+  addLayer({ id: "origin-hit", type: "circle", source: "origin-src",
+    paint: { "circle-radius": 22, "circle-color": "rgba(23,48,77,0.01)" } });
+  addLayer({ id: "origin-halo", type: "circle", source: "origin-src",
+    paint: { "circle-radius": 13, "circle-color": "rgba(23,48,77,0.2)",
+      "circle-stroke-color": "rgba(23,48,77,0.92)", "circle-stroke-width": 3 } });
+  addLayer({ id: "origin-dot", type: "circle", source: "origin-src",
+    paint: { "circle-radius": 5, "circle-color": "#fff8ef" } });
+
+  addLayer({ id: "destination-hit", type: "circle", source: "destination-src",
+    paint: { "circle-radius": 22, "circle-color": "rgba(223,96,50,0.01)" } });
+  addLayer({ id: "destination-halo", type: "circle", source: "destination-src",
+    paint: {
+      "circle-radius": 12,
+      "circle-color": "rgba(223,96,50,0.22)",
+      "circle-stroke-color": "rgba(223,96,50,0.95)",
+      "circle-stroke-width": 3
+    } });
+  addLayer({ id: "destination-dot", type: "circle", source: "destination-src",
+    paint: { "circle-radius": 4.5, "circle-color": "#fff8ef" } });
 }
 
 function addSource(id, source) {
@@ -252,14 +280,16 @@ function addLayer(layer) {
 // ── Pin origin ─────────────────────────────────────────────────────────────
 let _pinSeq = 0;  // cancel stale pin attempts
 
-async function pinOrigin(lon, lat, label, { pushUrl = true } = {}) {
+async function pinOrigin(lon, lat, label, { pushUrl = true, preserveDestination = false } = {}) {
   const seq = ++_pinSeq;
 
+  const preservedDestination = state.destination ? { ...state.destination } : null;
+  const shouldRestoreDestination = Boolean(preserveDestination && preservedDestination);
   state.origin = { lon, lat, label: label || `${lat.toFixed(4)}, ${lon.toFixed(4)}` };
   state.grid   = null;
   state.isochrones = null;
   state.meshWarp = null;
-  state.destination = null;
+  state.destination = shouldRestoreDestination ? preservedDestination : null;
   state.trip = null;
   state.routeGeo = null;
 
@@ -269,10 +299,11 @@ async function pinOrigin(lon, lat, label, { pushUrl = true } = {}) {
   el.statusText.textContent = `Pinned near ${state.origin.label}`;
   el.timeTooltip.hidden = true;
   el.reachCard.hidden = true;
-  hideTripCard();
+  if (!shouldRestoreDestination) hideTripCard();
   clearCanvas();
   clearRoute();
-  clearDestinationMarker();
+  if (!shouldRestoreDestination) clearDestinationMarker();
+  else updateDestinationMarker();
 
   // Check cache before showing spinner so message is correct
   const cacheProfile = gridCacheProfile();
@@ -316,6 +347,9 @@ async function pinOrigin(lon, lat, label, { pushUrl = true } = {}) {
     await new Promise(resolve => requestAnimationFrame(resolve));
     redraw();
     showReach();
+    if (shouldRestoreDestination && state.destination) {
+      setDestination(state.destination.lon, state.destination.lat, state.destination.label, { updateLabel: false });
+    }
     updateCacheBadge();
   } catch (err) {
     if (seq === _pinSeq) {
@@ -376,9 +410,12 @@ function updateIsochroneData() {
   src.setData(fc);
   if (ghostSrc) ghostSrc.setData(state.showWarp && state.isochrones ? sortedIsochrones(state.isochrones) : empty());
   const visibility = state.isochrones && state.showRings ? "visible" : "none";
-  ["isochrones-fill", "isochrones-line"].forEach((id) => {
+  ["isochrones-fill", "isochrones-line", "isochrones-max-line"].forEach((id) => {
     if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", visibility);
   });
+  if (map.getLayer("isochrones-max-line")) {
+    map.setFilter("isochrones-max-line", ["==", ["get", "contour"], state.maxMinutes]);
+  }
   const ghostVisibility = state.isochrones && state.showRings && state.showWarp ? "visible" : "none";
   ["isochrones-ghost-fill", "isochrones-ghost-line"].forEach((id) => {
     if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", ghostVisibility);
@@ -424,9 +461,10 @@ function showReach() {
   if (metaEl) metaEl.textContent = `of sampled points reachable in ${state.maxMinutes} min`;
 }
 
-async function setDestination(lon, lat, label) {
+async function setDestination(lon, lat, label, { updateLabel = true } = {}) {
   if (!state.origin || !state.grid) return;
-  state.destination = { lon, lat, label: label || `${lat.toFixed(4)}, ${lon.toFixed(4)}` };
+  const nextLabel = updateLabel ? label : (state.destination?.label || label);
+  state.destination = { lon, lat, label: nextLabel || `${lat.toFixed(4)}, ${lon.toFixed(4)}` };
   updateDestinationMarker();
 
   const sampledSeconds = sampleTimeSeconds(state.grid, lon, lat);
@@ -486,12 +524,131 @@ function hideTripCard() {
   if (el.tripCard) el.tripCard.hidden = true;
 }
 
+function handlePinDrag(e) {
+  if (!state.dragTarget) return;
+  e.preventDefault();
+  const pointer = eventClientPoint(e.originalEvent);
+  if (state.dragStart && pointer) {
+    state.dragMoved = state.dragMoved || Math.hypot(pointer[0] - state.dragStart[0], pointer[1] - state.dragStart[1]) > 5;
+  }
+  const { lng, lat } = eventWorldLngLat(e);
+  if (!Number.isFinite(lng) || !Number.isFinite(lat)) return;
+  if (state.dragTarget === "origin") {
+    state.origin = { ...state.origin, lon: lng, lat, label: `${lat.toFixed(4)}, ${lng.toFixed(4)}` };
+    updateOriginMarker();
+    if (state.destination) drawRoute({
+      type: "LineString",
+      coordinates: [[lng, lat], [state.destination.lon, state.destination.lat]],
+    });
+  } else if (state.dragTarget === "destination") {
+    state.destination = { ...state.destination, lon: lng, lat, label: `${lat.toFixed(4)}, ${lng.toFixed(4)}` };
+    updateDestinationMarker();
+    if (state.origin) drawRoute({
+      type: "LineString",
+      coordinates: [[state.origin.lon, state.origin.lat], [lng, lat]],
+    });
+  }
+}
+
+async function finishPinDrag(e) {
+  if (!state.dragTarget) return;
+  e.preventDefault();
+  const target = state.dragTarget;
+  const moved = state.dragMoved;
+  const { lng, lat } = eventWorldLngLat(e);
+  state.dragTarget = null;
+  state.dragStart = null;
+  state.dragMoved = false;
+  state.suppressMapClick = true;
+  map.dragPan.enable();
+  map.getCanvas().style.cursor = "";
+
+  if (!moved) {
+    if (target === "origin") clearOrigin();
+    else clearDestination();
+    return;
+  }
+  if (!Number.isFinite(lng) || !Number.isFinite(lat)) return;
+
+  if (target === "origin") {
+    const label = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+    try {
+      const r = await nominatimReverse(lat, lng);
+      const top = r?.results?.[0];
+      await pinOrigin(lng, lat, top?.formatted ? shortenLabel(top.formatted) : label, { preserveDestination: true });
+    } catch {
+      await pinOrigin(lng, lat, label, { preserveDestination: true });
+    }
+  } else if (target === "destination") {
+    let label = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+    try {
+      const r = await nominatimReverse(lat, lng);
+      const top = r?.results?.[0];
+      if (top?.formatted) label = shortenLabel(top.formatted);
+    } catch { /* silent */ }
+    setDestination(lng, lat, label);
+  }
+}
+
+function eventClientPoint(event) {
+  const touch = event?.touches?.[0] || event?.changedTouches?.[0];
+  if (touch) return [touch.clientX, touch.clientY];
+  if (Number.isFinite(event?.clientX) && Number.isFinite(event?.clientY)) return [event.clientX, event.clientY];
+  return null;
+}
+
+function eventWorldLngLat(e) {
+  const raw = e?.lngLat;
+  const lng = raw?.lng;
+  const lat = raw?.lat;
+  if (!Number.isFinite(lng) || !Number.isFinite(lat)) return { lng: NaN, lat: NaN };
+  if (state.showWarp && state.meshWarp?.inverseWarpPoint) {
+    const [worldLng, worldLat] = state.meshWarp.inverseWarpPoint([lng, lat]);
+    return { lng: worldLng, lat: worldLat };
+  }
+  return { lng, lat };
+}
+
+function clearOrigin() {
+  state.origin = null;
+  state.grid = null;
+  state.isochrones = null;
+  state.meshWarp = null;
+  clearRoute();
+  clearDestination();
+  map.getSource("origin-src")?.setData(empty());
+  map.getSource("isochrones-src")?.setData(empty());
+  map.getSource("isochrones-ghost-src")?.setData(empty());
+  clearCanvas();
+  el.originLabel.hidden = true;
+  el.reachCard.hidden = true;
+  el.timeTooltip.hidden = true;
+  el.statusText.textContent = "Click the map to set your starting point";
+  el.searchMeta.textContent = "Origin cleared. Search or click the map to start again.";
+  writeUrl();
+}
+
+function clearDestination() {
+  state.destination = null;
+  state.trip = null;
+  clearRoute();
+  clearDestinationMarker();
+  hideTripCard();
+  el.timeTooltip.hidden = true;
+  writeUrl();
+}
+
 // ── Events ─────────────────────────────────────────────────────────────────
 function attachEvents() {
   // First map click pins an origin. Later clicks probe origin-to-destination time.
   map.on("click", async (e) => {
+    if (state.suppressMapClick) {
+      state.suppressMapClick = false;
+      return;
+    }
+    if (state.dragTarget) return;
     if ($("settingsMenu").hasAttribute("open")) return;
-    const { lng, lat } = e.lngLat;
+    const { lng, lat } = eventWorldLngLat(e);
     let label = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
     try {
       const r = await nominatimReverse(lat, lng);
@@ -505,11 +662,41 @@ function attachEvents() {
     }
   });
 
+  const startPinDrag = (target, e) => {
+    if (!state.origin || (target === "destination" && !state.destination)) return;
+    e.preventDefault();
+    const pointer = eventClientPoint(e.originalEvent);
+    state.dragTarget = target;
+    state.dragStart = pointer;
+    state.dragMoved = false;
+    map.dragPan.disable();
+    map.getCanvas().style.cursor = "grabbing";
+  };
+
+  ["origin-hit", "origin-halo", "origin-dot"].forEach((layer) => {
+    map.on("mousedown", layer, (e) => startPinDrag("origin", e));
+    map.on("touchstart", layer, (e) => startPinDrag("origin", e));
+    map.on("mouseenter", layer, () => { map.getCanvas().style.cursor = "grab"; });
+    map.on("mouseleave", layer, () => { if (!state.dragTarget) map.getCanvas().style.cursor = ""; });
+  });
+  ["destination-hit", "destination-halo", "destination-dot"].forEach((layer) => {
+    map.on("mousedown", layer, (e) => startPinDrag("destination", e));
+    map.on("touchstart", layer, (e) => startPinDrag("destination", e));
+    map.on("mouseenter", layer, () => { map.getCanvas().style.cursor = "grab"; });
+    map.on("mouseleave", layer, () => { if (!state.dragTarget) map.getCanvas().style.cursor = ""; });
+  });
+
+  map.on("mousemove", (e) => handlePinDrag(e));
+  map.on("touchmove", (e) => handlePinDrag(e));
+  map.on("mouseup", (e) => finishPinDrag(e));
+  map.on("touchend", (e) => finishPinDrag(e));
+
   // Right-click / ctrl+click → draw route from pinned origin to clicked point
   map.on("contextmenu", async (e) => {
     if (!state.origin || !state.grid) return;
     e.preventDefault();
-    const { lng, lat } = e.lngLat;
+    const { lng, lat } = eventWorldLngLat(e);
+    if (!Number.isFinite(lng) || !Number.isFinite(lat)) return;
     let label = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
     try {
       const r = await nominatimReverse(lat, lng);
@@ -521,8 +708,9 @@ function attachEvents() {
 
   // Hover → show travel time (from grid)
   map.on("mousemove", (e) => {
+    if (state.dragTarget) return;
     if (!state.grid) return;
-    const { lng, lat } = e.lngLat;
+    const { lng, lat } = eventWorldLngLat(e);
     const secs = sampleTimeSeconds(state.grid, lng, lat);
     if (secs != null) {
       const mins = Math.round(secs / 60);
@@ -578,7 +766,7 @@ function attachEvents() {
   // Mode change → re-fetch with the matching Valhalla costing profile.
   el.modeSelect.addEventListener("change", () => {
     state.mode = el.modeSelect.value;
-    if (state.origin) pinOrigin(state.origin.lon, state.origin.lat, state.origin.label);
+    if (state.origin) pinOrigin(state.origin.lon, state.origin.lat, state.origin.label, { preserveDestination: Boolean(state.destination) });
   });
 
   // Max time range
@@ -588,8 +776,12 @@ function attachEvents() {
     if (el.legendMax) el.legendMax.textContent = `${state.maxMinutes}m`;
   });
   el.maxTimeRange.addEventListener("change", () => {
-    redraw();
-    showReach();
+    if (state.origin) {
+      pinOrigin(state.origin.lon, state.origin.lat, state.origin.label, { preserveDestination: Boolean(state.destination) });
+    } else {
+      redraw();
+      showReach();
+    }
   });
 
   // Search

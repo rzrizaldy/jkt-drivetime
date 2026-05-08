@@ -69,7 +69,7 @@
                     <label class="toggle-control" for="ringsToggle">
                       <input id="ringsToggle" type="checkbox" checked />
                       <span class="toggle-track"><span class="toggle-thumb"></span></span>
-                      <span class="toggle-label">rings</span>
+                      <span class="toggle-label">outline</span>
                     </label>
                   </div>
                   <div class="settings-grid">
@@ -93,17 +93,19 @@
                     </label>
                     <label class="settings-field">
                       <span class="settings-field-head">
-                        <span>Maximum time</span>
+                        <span>Maximum road time</span>
                         <strong id="maxTimeLabel">60 min</strong>
                       </span>
                       <div class="settings-input-row">
-                        <input id="maxTimeRange" type="range" min="10" max="60" step="5" value="60" list="timePresets" />
+                        <input id="maxTimeRange" type="range" min="10" max="90" step="5" value="60" list="timePresets" />
                         <datalist id="timePresets">
                           <option value="10"></option>
                           <option value="20"></option>
                           <option value="30"></option>
                           <option value="45"></option>
                           <option value="60"></option>
+                          <option value="75"></option>
+                          <option value="90"></option>
                         </datalist>
                       </div>
                     </label>

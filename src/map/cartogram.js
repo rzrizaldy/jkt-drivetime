@@ -289,7 +289,22 @@ export function buildMeshWarp(grid, maxMinutes = 60) {
     );
   }
 
-  return { warpPoint, cellSize: Math.max(Math.abs(cellW), Math.abs(cellH)) };
+  function inverseWarpPoint(coord) {
+    let guess = [
+      clamp(coord[0], west, east),
+      clamp(coord[1], south, north),
+    ];
+    for (let iteration = 0; iteration < 7; iteration += 1) {
+      const projected = warpPoint(guess);
+      guess = [
+        clamp(guess[0] + (coord[0] - projected[0]), west, east),
+        clamp(guess[1] + (coord[1] - projected[1]), south, north),
+      ];
+    }
+    return guess;
+  }
+
+  return { warpPoint, inverseWarpPoint, cellSize: Math.max(Math.abs(cellW), Math.abs(cellH)) };
 }
 
 export function transformGeoJSONWithMeshWarp(input, meshWarp) {
