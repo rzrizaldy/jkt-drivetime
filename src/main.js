@@ -819,8 +819,12 @@ async function doSearch(query) {
       { formatted: "BSD City, Tangerang Selatan",  lat: -6.3024, lon: 106.6527 },
       { formatted: "Bekasi",                       lat: -6.2383, lon: 106.9756 },
       { formatted: "Depok",                        lat: -6.4025, lon: 106.7942 },
+      { formatted: "Limo, Depok",                   lat: -6.3661, lon: 106.7823 },
+      { formatted: "Cinere, Depok",                 lat: -6.3322, lon: 106.7850 },
+      { formatted: "Margonda, Depok",               lat: -6.3728, lon: 106.8326 },
     ];
-    return MOCK.filter((a) => a.formatted.toLowerCase().includes(query.toLowerCase()));
+    const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+    return MOCK.filter((a) => words.every((word) => a.formatted.toLowerCase().includes(word)));
   }
 }
 
