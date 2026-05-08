@@ -1007,10 +1007,12 @@ function hideLoading() {
 
 // ── Context data ───────────────────────────────────────────────────────────
 async function loadContextLayers() {
+  const baseUrl = import.meta.env.BASE_URL || "/";
+  const dataUrl = (path) => `${baseUrl}${path}`.replace(/\/+/g, "/");
   try {
     const [boundaryRes, contextRes] = await Promise.all([
-      fetch("/data/context/jabodetabek_boundary.geojson"),
-      fetch("/data/jakarta_open_layers.json"),
+      fetch(dataUrl("data/context/jabodetabek_boundary.geojson")),
+      fetch(dataUrl("data/jakarta_open_layers.json")),
     ]);
     if (boundaryRes.ok) state.boundaryFc = await boundaryRes.json();
     if (contextRes.ok) {
