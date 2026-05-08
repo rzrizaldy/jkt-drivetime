@@ -7,7 +7,7 @@
  * same cached grid instead of re-fetching.
  */
 
-const NS       = "jkt-grid-v1:";
+const NS       = "jkt-grid-v2:";
 const SNAP_DEG = 0.005;          // ~500 m at Jakarta latitude
 const MAX_KEYS = 40;             // max localStorage entries before LRU evict
 
@@ -15,15 +15,15 @@ const MAX_KEYS = 40;             // max localStorage entries before LRU evict
 const memCache = new Map();
 
 /** Snap lat/lon to a grid so nearby points share a cache entry. */
-export function snapKey(lat, lon) {
+export function snapKey(lat, lon, profile = "drive") {
   const sLat = (Math.round(lat / SNAP_DEG) * SNAP_DEG).toFixed(4);
   const sLon = (Math.round(lon / SNAP_DEG) * SNAP_DEG).toFixed(4);
-  return `${sLat},${sLon}`;
+  return `${profile}:${sLat},${sLon}`;
 }
 
 /** @returns {import('./map/cartogram.js').TravelGrid | null} */
-export function getGrid(lat, lon) {
-  const key = snapKey(lat, lon);
+export function getGrid(lat, lon, profile = "drive") {
+  const key = snapKey(lat, lon, profile);
 
   // L1
   if (memCache.has(key)) return memCache.get(key);
@@ -43,8 +43,8 @@ export function getGrid(lat, lon) {
 }
 
 /** @param {import('./map/cartogram.js').TravelGrid} grid */
-export function setGrid(lat, lon, grid) {
-  const key = snapKey(lat, lon);
+export function setGrid(lat, lon, grid, profile = "drive") {
+  const key = snapKey(lat, lon, profile);
 
   // L1
   memCache.set(key, grid);
@@ -76,7 +76,7 @@ export function clearCache() {
 }
 
 // ── LRU helpers ─────────────────────────────────────────────────────────────
-const TS_NS = "jkt-grid-ts-v1:";
+const TS_NS = "jkt-grid-ts-v2:";
 
 function touchKey(key) {
   try { localStorage.setItem(TS_NS + key, Date.now().toString()); } catch { /* ignore */ }

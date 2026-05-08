@@ -6,11 +6,11 @@ export const JABODETABEK_BBOX = Object.freeze([106.32, -6.78, 107.22, -5.92]);
 export const CONTOUR_MINUTES = Object.freeze([10, 20, 30, 45, 60]);
 
 export const CONTOUR_COLORS = Object.freeze({
-  10: "#22c55e",
-  20: "#86efac",
-  30: "#facc15",
-  45: "#f97316",
-  60: "#ef4444",
+  10: "#dc4525",
+  20: "#f47f2e",
+  30: "#ffc44f",
+  45: "#95bcd3",
+  60: "#4a678d",
 });
 
 export const TRAVEL_MODES = Object.freeze([
@@ -20,9 +20,14 @@ export const TRAVEL_MODES = Object.freeze([
   { id: "walk", label: "Walk", costing: "pedestrian" },
 ]);
 
-/** True when running without a backend (haversine mock). */
+/** True when using the Valhalla routing backend. */
+export function useLiveRoutingMode() {
+  return String(import.meta.env?.VITE_USE_LIVE_ROUTING ?? "true") !== "false";
+}
+
+/** Backwards-compatible alias for old fallback-only modules. */
 export function useMockMode() {
-  return String(import.meta.env?.VITE_USE_MOCK ?? "") === "true";
+  return String(import.meta.env?.VITE_USE_MOCK ?? "false") === "true";
 }
 
 export function modeToCosting(mode) {

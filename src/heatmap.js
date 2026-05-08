@@ -1,7 +1,5 @@
 /**
- * Canvas-based smooth heatmap renderer.
- * Renders a pixel-level gradient (red=close, blue=far) from a travel-time grid.
- * Exactly matches the NYC cartogram color scale.
+ * Canvas-based smooth heatmap renderer (NYC color scale).
  */
 
 const GRADIENT_STOPS = [
@@ -13,11 +11,6 @@ const GRADIENT_STOPS = [
   { t: 1.00, r: 74,  g: 103, b: 141 },
 ];
 
-/**
- * @param {number} minutes
- * @param {number} maxMinutes
- * @returns {[number,number,number]} rgb
- */
 export function heatmapRgb(minutes, maxMinutes) {
   const t = Math.min(1, Math.max(0, minutes / maxMinutes));
   let left = GRADIENT_STOPS[0];
@@ -38,90 +31,109 @@ export function heatmapRgb(minutes, maxMinutes) {
 }
 
 /**
- * Draw a smooth heatmap on the given canvas using a travel-time grid.
- * Renders each grid cell as a rectangle, then applies CSS blur for smoothness.
+ * Draw a smooth blurred heatmap on a visible canvas from a TravelGrid.
+ * Uses ImageData (pixel-level) for max compatibility — no OffscreenCanvas.
  *
  * @param {HTMLCanvasElement} canvas
  * @param {import('./map/cartogram.js').TravelGrid} grid
- * @param {maplibregl.Map} map — used to project lng/lat → screen px
- * @param {{ maxMinutes: number, alpha: number }} opts
+ * @param {maplibregl.Map} map
+ * @param {{ maxMinutes?: number, alpha?: number }} opts
  */
 export function renderHeatmap(canvas, grid, map, { maxMinutes = 60, alpha = 0.82 } = {}) {
-  const dpr = window.devicePixelRatio || 1;
-  const rect = canvas.getBoundingClientRect();
-  canvas.width  = Math.round(rect.width  * dpr);
-  canvas.height = Math.round(rect.height * dpr);
+  if (!canvas || !grid || !map) return;
 
-  const ctx = canvas.getContext("2d");
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const parent = canvas.parentElement;
+  const pw = parent ? parent.clientWidth  : 0;
+  const ph = parent ? parent.clientHeight : 0;
+  if (!pw || !ph) return;          // layout not ready — will retry on next moveend
+
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width  = Math.round(pw * dpr);
+  canvas.height = Math.round(ph * dpr);
+
+  const W = canvas.width;
+  const H = canvas.height;
+  if (!W || !H) return;
 
   const { west, south, east, north, cols, rows, times } = grid;
   if (!times?.length) return;
+  const maxSeconds = maxMinutes * 60 * 1.1;
 
-  const cellW = (east - west)   / Math.max(1, cols - 1);
+  // Render soft point splats, not grid rectangles. This avoids the boxy
+  // CommuteTimeMap look while still using the same factual travel-time grid.
+  const tmp = document.createElement("canvas");
+  tmp.width  = W;
+  tmp.height = H;
+  const tctx = tmp.getContext("2d");
+
+  const cellW = (east  - west)  / Math.max(1, cols - 1);
   const cellH = (north - south) / Math.max(1, rows - 1);
-
-  // Off-screen canvas for sharp rectangles → then blur
-  const off = new OffscreenCanvas(canvas.width, canvas.height);
-  const octx = off.getContext("2d");
 
   for (let j = 0; j < rows; j++) {
     for (let i = 0; i < cols; i++) {
       const t = times[i + j * cols];
       if (t == null) continue;
-      const minutes = t / 60;
+      if (t > maxSeconds) continue;
 
       const lng0 = west  + i * cellW;
       const lat0 = south + j * cellH;
-      const lng1 = lng0 + cellW;
-      const lat1 = lat0 + cellH;
+      const lng1 = lng0  + cellW;
+      const lat1 = lat0  + cellH;
+      const lngC = lng0;
+      const latC = lat0;
 
-      const p0 = map.project([lng0, lat0]);
-      const p1 = map.project([lng1, lat1]);
+      let p0, p1, pc;
+      try {
+        pc = map.project([lngC, latC]);
+        p0 = map.project([lng0 - cellW * 0.5, lat0 - cellH * 0.5]);
+        p1 = map.project([lng1, lat1]);
+      } catch { continue; }
 
-      const px = Math.min(p0.x, p1.x) * dpr;
-      const py = Math.min(p0.y, p1.y) * dpr;
-      const pw = (Math.abs(p1.x - p0.x) + 1) * dpr;
-      const ph = (Math.abs(p1.y - p0.y) + 1) * dpr;
+      const px = pc.x * dpr;
+      const py = pc.y * dpr;
+      const radius = Math.max(14, Math.hypot(p1.x - p0.x, p1.y - p0.y) * 0.95) * dpr;
 
-      const [r, g, b] = heatmapRgb(minutes, maxMinutes);
-      octx.fillStyle = `rgb(${r},${g},${b})`;
-      octx.fillRect(px, py, pw, ph);
+      if (!isFinite(px) || !isFinite(py) || !isFinite(radius)) continue;
+
+      const [r, g, b] = heatmapRgb(t / 60, maxMinutes);
+      const grad = tctx.createRadialGradient(px, py, 0, px, py, radius);
+      grad.addColorStop(0, `rgba(${r},${g},${b},0.82)`);
+      grad.addColorStop(0.68, `rgba(${r},${g},${b},0.42)`);
+      grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
+      tctx.fillStyle = grad;
+      tctx.beginPath();
+      tctx.arc(px, py, radius, 0, Math.PI * 2);
+      tctx.fill();
     }
   }
 
-  // Composite with blur
-  ctx.filter = "blur(14px)";
+  // ── Composite with blur ──────────────────────────────────────────────────
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, W, H);
+  ctx.filter = "blur(8px)";
   ctx.globalAlpha = alpha;
-  ctx.drawImage(off, 0, 0);
+  ctx.drawImage(tmp, 0, 0);
   ctx.filter = "none";
   ctx.globalAlpha = 1;
 }
 
 /**
- * Same as renderHeatmap but also draws the isochrone ring outlines
- * as subtle dashed lines (optional "rings" toggle).
- *
- * @param {HTMLCanvasElement} canvas
- * @param {GeoJSON.FeatureCollection} isochrones
- * @param {maplibregl.Map} map
- * @param {{ maxMinutes: number }} opts
+ * Draw dashed ring outlines from isochrone features.
  */
 export function renderRingOutlines(canvas, isochrones, map, { maxMinutes = 60 } = {}) {
+  if (!canvas || !map) return;
   const ctx = canvas.getContext("2d");
-  const dpr = window.devicePixelRatio || 1;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
   const features = (isochrones?.features || [])
     .sort((a, b) => (a.properties?.contour ?? 0) - (b.properties?.contour ?? 0));
 
   ctx.save();
   ctx.scale(dpr, dpr);
-
   for (const feat of features) {
     const minutes = feat.properties?.contour ?? 0;
     const [r, g, b] = heatmapRgb(minutes, maxMinutes);
     const geom = feat.geometry;
     if (!geom) continue;
-
     const rings =
       geom.type === "Polygon"      ? geom.coordinates :
       geom.type === "MultiPolygon" ? geom.coordinates.flat() : [];
@@ -130,9 +142,12 @@ export function renderRingOutlines(canvas, isochrones, map, { maxMinutes = 60 } 
     for (const ring of rings) {
       let first = true;
       for (const [lng, lat] of ring) {
-        const { x, y } = map.project([lng, lat]);
-        first ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-        first = false;
+        try {
+          const { x, y } = map.project([lng, lat]);
+          if (!isFinite(x) || !isFinite(y)) continue;
+          first ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+          first = false;
+        } catch { /* skip */ }
       }
       ctx.closePath();
     }
@@ -141,6 +156,5 @@ export function renderRingOutlines(canvas, isochrones, map, { maxMinutes = 60 } 
     ctx.setLineDash([4, 4]);
     ctx.stroke();
   }
-
   ctx.restore();
 }

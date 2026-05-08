@@ -6,7 +6,7 @@
     <meta name="description" content="Greater Jakarta by how long it takes to drive there. A drive-time cartogram using real road data from OpenStreetMap." />
     <title>Jakarta Drive-Time Cartogram</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700;800&family=Newsreader:opsz,wght@6..72,700;6..72,800&display=swap" rel="stylesheet" />
   </head>
   <body>
     <div class="page-shell">
@@ -14,22 +14,22 @@
       <!-- ── Hero ─────────────────────────────────────────────────────── -->
       <header class="hero">
         <div class="hero-copy">
-          <p class="eyebrow">Drive-Time Cartogram</p>
-          <h1>Greater Jakarta by how long it takes to get there.</h1>
+          <p class="eyebrow">Jabodetabek Road-Time Cartogram</p>
+          <h1>Greater Jakarta by road minutes, not map distance.</h1>
           <p class="lede">
-            Click anywhere on the map to pin an origin. Hover to read drive times back to that
-            pinned point while the city warps around it.
+            Pin an origin, then read the heat and hover-time field as the metro area stretches
+            around road access rather than straight-line geography.
           </p>
         </div>
         <div class="hero-stats">
           <!-- Search card -->
           <form id="searchForm" class="stat search-card" autocomplete="off">
-            <label class="stat-label" for="addressInput">Pin by Address</label>
+            <label class="stat-label" for="addressInput">Pin Origin</label>
             <div class="search-row">
               <input id="addressInput" name="address" type="text" placeholder="Search a Jakarta address…" />
               <button id="searchButton" class="pin-button search-button" type="submit">Search</button>
             </div>
-            <div id="searchMeta" class="search-meta">Pin the origin by typing a Jabodetabek address.</div>
+            <div id="searchMeta" class="search-meta">Search a place or click directly on the map.</div>
             <div id="searchResults" class="search-results" aria-live="polite"></div>
           </form>
         </div>
@@ -42,7 +42,7 @@
         <section class="panel-card accent">
           <div class="panel-header">
             <div>
-              <h2>Drive-time warp</h2>
+              <h2>Road-time warp</h2>
               <p id="statusText">Click the map to set your starting point</p>
             </div>
             <div class="panel-controls">
@@ -59,15 +59,15 @@
                     <label class="toggle-control" for="warpToggle">
                       <input id="warpToggle" type="checkbox" checked />
                       <span class="toggle-track"><span class="toggle-thumb"></span></span>
-                      <span class="toggle-label">warp</span>
+                      <span class="toggle-label">cartogram</span>
                     </label>
                     <label class="toggle-control" for="heatmapToggle">
-                      <input id="heatmapToggle" type="checkbox" checked />
+                      <input id="heatmapToggle" type="checkbox" />
                       <span class="toggle-track"><span class="toggle-thumb"></span></span>
                       <span class="toggle-label">heatmap</span>
                     </label>
                     <label class="toggle-control" for="ringsToggle">
-                      <input id="ringsToggle" type="checkbox" />
+                      <input id="ringsToggle" type="checkbox" checked />
                       <span class="toggle-track"><span class="toggle-thumb"></span></span>
                       <span class="toggle-label">rings</span>
                     </label>
@@ -97,7 +97,14 @@
                         <strong id="maxTimeLabel">60 min</strong>
                       </span>
                       <div class="settings-input-row">
-                        <input id="maxTimeRange" type="range" min="30" max="90" step="15" value="60" />
+                        <input id="maxTimeRange" type="range" min="10" max="60" step="5" value="60" list="timePresets" />
+                        <datalist id="timePresets">
+                          <option value="10"></option>
+                          <option value="20"></option>
+                          <option value="30"></option>
+                          <option value="45"></option>
+                          <option value="60"></option>
+                        </datalist>
                       </div>
                     </label>
                   </div>
@@ -121,6 +128,11 @@
             <!-- Smooth heatmap canvas overlay -->
             <canvas id="heatmapCanvas" aria-hidden="true"></canvas>
 
+            <div class="map-note-card">
+              <p class="map-note-kicker">How it works</p>
+              <p>Click the map to move the origin. Cartogram mode pulls equal-minute Valhalla rings into time-space.</p>
+            </div>
+
             <!-- Origin pin label -->
             <div id="originLabel" class="origin-label" hidden></div>
 
@@ -133,6 +145,16 @@
             <div id="loadingOverlay" class="loading-overlay" hidden>
               <div class="spinner"></div>
               <span>Computing drive times…</span>
+            </div>
+
+            <!-- Utility controls -->
+            <div class="map-action-controls">
+              <button class="map-action-btn" type="button" aria-label="Toggle fullscreen map" title="Toggle fullscreen map">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M16 3h3a2 2 0 0 1 2 2v3"/><path d="M8 21H5a2 2 0 0 1-2-2v-3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+              </button>
+              <button class="map-action-btn" type="button" aria-label="Share this view" title="Share this view">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7"/><path d="m16 6-4-4-4 4"/><path d="M12 2v13"/></svg>
+              </button>
             </div>
 
             <!-- Zoom controls -->
@@ -155,7 +177,7 @@
 
           <!-- Reach score -->
           <div id="reachCard" class="reach-card" hidden>
-            <span class="reach-label">60-Minute Drive Reach</span>
+            <span class="reach-label">60-Minute Road Reach</span>
             <strong id="reachArea" class="reach-value">—</strong>
             <span id="reachMeta" class="reach-meta">of Jabodetabek by road</span>
           </div>
@@ -164,9 +186,10 @@
         <!-- Attribution notes -->
         <section class="notes">
           <p>
-            Drive times estimated from <a href="https://valhalla1.openstreetmap.de" target="_blank" rel="noopener">Valhalla routing</a> using
-            <a href="https://www.openstreetmap.org" target="_blank" rel="noopener">OpenStreetMap</a> road data.
-            Times reflect typical conditions — not live traffic. Jabodetabek only.
+            Primary mode uses
+            <a href="https://valhalla.github.io/valhalla/" target="_blank" rel="noopener">Valhalla</a> isochrones over
+            <a href="https://www.openstreetmap.org" target="_blank" rel="noopener">OpenStreetMap</a> roads.
+            Jakarta open datasets are shown as context; this is not live TomTom-style traffic.
           </p>
         </section>
       </main>
@@ -178,7 +201,7 @@
         <a href="https://valhalla1.openstreetmap.de" target="_blank" rel="noopener">Valhalla</a>
         ·
         <a href="https://github.com/rzrizaldy/jkt-traffic-wrap" target="_blank" rel="noopener">GitHub</a>
-        <span id="apiBadge" class="api-badge">live</span>
+        <span id="apiBadge" class="api-badge">valhalla</span>
       </footer>
 
     </div><!-- /page-shell -->

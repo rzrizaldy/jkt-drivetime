@@ -27,7 +27,7 @@ const MAX_BATCH = 490;
  */
 export async function buildOsrmGrid(origin, bbox = JABODETABEK_BBOX, cols = COLS, rows = ROWS) {
   // ── Cache hit ────────────────────────────────────────────────────────────
-  const cached = getGrid(origin.lat, origin.lon);
+  const cached = getGrid(origin.lat, origin.lon, "osrm-drive");
   if (cached) return cached;
 
   // ── Cache miss: fetch from OSRM ──────────────────────────────────────────
@@ -43,18 +43,20 @@ export async function buildOsrmGrid(origin, bbox = JABODETABEK_BBOX, cols = COLS
 
   let times;
   if (targets.length <= MAX_BATCH) {
-    times = await osrmTable(origin, targets);
+    const result = await osrmTable(origin, targets);
+    times = result.durations;
   } else {
     times = [];
     for (let start = 0; start < targets.length; start += MAX_BATCH) {
-      const batch = targets.slice(start, start + MAX_BATCH);
-      times.push(...await osrmTable(origin, batch));
+      const batch  = targets.slice(start, start + MAX_BATCH);
+      const result = await osrmTable(origin, batch);
+      times.push(...result.durations);
     }
   }
 
   const grid = { west, south, east, north, cols, rows, times, origin };
 
-  // ── Persist ──────────────────────────────────────────────────────────────
-  setGrid(origin.lat, origin.lon, grid);
+  // ── Persist to cache ─────────────────────────────────────────────────────
+  setGrid(origin.lat, origin.lon, grid, "osrm-drive");
   return grid;
 }
