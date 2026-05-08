@@ -3,8 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Greater Jakarta by how long it takes to drive there. A drive-time cartogram using real road data from OpenStreetMap." />
-    <title>Jakarta Drive-Time Cartogram</title>
+    <meta name="description" content="Greater Jakarta by how long it takes to drive there. A drive-time map using real road data from OpenStreetMap." />
+    <title>Jakarta Drive-Time Map</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700;800&family=Newsreader:opsz,wght@6..72,700;6..72,800&display=swap" rel="stylesheet" />
   </head>
@@ -14,7 +14,7 @@
       <!-- ── Hero ─────────────────────────────────────────────────────── -->
       <header class="hero">
         <div class="hero-copy">
-          <p class="eyebrow">Jabodetabek Road-Time Cartogram</p>
+          <p class="eyebrow">Jabodetabek Road-Time Map</p>
           <h1>Greater Jakarta by road minutes, not map distance.</h1>
           <p class="lede">
             Pin an origin, then read the heat and hover-time field as the metro area stretches
@@ -42,7 +42,7 @@
         <section class="panel-card accent">
           <div class="panel-header">
             <div>
-              <h2>Road-time warp</h2>
+              <h2>Road-time map</h2>
               <p id="statusText">Click the map to set your starting point</p>
             </div>
             <div class="panel-controls">
@@ -56,16 +56,6 @@
                 </summary>
                 <div class="settings-card">
                   <div class="settings-toggle-group">
-                    <label class="toggle-control" for="warpToggle">
-                      <input id="warpToggle" type="checkbox" checked />
-                      <span class="toggle-track"><span class="toggle-thumb"></span></span>
-                      <span class="toggle-label">cartogram</span>
-                    </label>
-                    <label class="toggle-control" for="heatmapToggle">
-                      <input id="heatmapToggle" type="checkbox" />
-                      <span class="toggle-track"><span class="toggle-thumb"></span></span>
-                      <span class="toggle-label">heatmap</span>
-                    </label>
                     <label class="toggle-control" for="ringsToggle">
                       <input id="ringsToggle" type="checkbox" checked />
                       <span class="toggle-track"><span class="toggle-thumb"></span></span>
@@ -127,9 +117,6 @@
           <!-- Map frame (fixed aspect ratio) -->
           <div class="map-frame" id="mapFrame">
             <div id="map"></div>
-            <!-- Smooth heatmap canvas overlay -->
-            <canvas id="heatmapCanvas" aria-hidden="true"></canvas>
-
             <div class="map-note-card">
               <p class="map-note-kicker">How it works</p>
               <p>Search sets the origin. Click the map after that to calculate travel time to a destination.</p>
@@ -169,8 +156,7 @@
               </button>
             </div>
 
-            <!-- Heatmap legend -->
-            <div id="heatmapLegend" class="heatmap-legend" hidden>
+            <div id="timeLegend" class="time-legend">
               <span class="legend-min">0m</span>
               <div class="legend-bar"></div>
               <span id="legendMax" class="legend-max">60m</span>

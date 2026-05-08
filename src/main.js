@@ -8,8 +8,7 @@ import { buildHistoricalJakartaGrid } from "./api/historicalJakarta.js";
 import { fetchIsochrones, fetchRoute, extractRoute } from "./api/valhalla.js";
 import { cacheSize, clearCache, getGrid, setGrid } from "./cache.js";
 import { CONTOUR_COLORS, JAKARTA_CENTER, JABODETABEK_BBOX, useLiveRoutingMode } from "./config.js";
-import { renderHeatmap } from "./heatmap.js";
-import { buildMeshWarp, buildTravelGridFromIsochrones, sampleTimeSeconds, transformGeoJSONWithMeshWarp } from "./map/cartogram.js";
+import { buildTravelGridFromIsochrones, sampleTimeSeconds } from "./map/cartogram.js";
 import { buildTravelTree } from "./map/travelTree.js";
 
 const CONTOUR_COLOR_EXPRESSION = [
@@ -28,12 +27,9 @@ const state = {
   origin:     null,   // { lat, lon, label }
   mode:       "drive",
   maxMinutes: 60,
-  showWarp:   true,
-  showHeatmap:false,
   showRings:  true,
   grid:       null,   // TravelGrid derived from Valhalla isochrones or fallback
   isochrones: null,
-  meshWarp:   null,
   destination:null,
   trip:       null,
   dragTarget: null,
@@ -54,15 +50,12 @@ const el = {
   searchMeta:     $("searchMeta"),
   searchResults:  $("searchResults"),
   statusText:     $("statusText"),
-  warpToggle:     $("warpToggle"),
-  heatmapToggle:  $("heatmapToggle"),
   ringsToggle:    $("ringsToggle"),
   modeSelect:     $("modeSelect"),
   maxTimeRange:   $("maxTimeRange"),
   maxTimeLabel:   $("maxTimeLabel"),
   shareBtn:       $("shareBtn"),
-  heatmapCanvas:  $("heatmapCanvas"),
-  heatmapLegend:  $("heatmapLegend"),
+  timeLegend:     $("timeLegend"),
   legendMax:      $("legendMax"),
   originLabel:    $("originLabel"),
   timeTooltip:    $("timeTooltip"),
@@ -179,7 +172,7 @@ function setupMapLayers() {
       "line-opacity": 0.92
     } });
 
-  // Travel-time dendrogram. This is the primary cartogram structure.
+  // Optional travel-time branch layer, kept hidden by default.
   addSource("tree-src", { type: "geojson", data: empty(), lineMetrics: true });
   addLayer({ id: "travel-tree-shadow", type: "line", source: "tree-src",
     layout: { visibility: "none" },
@@ -288,7 +281,6 @@ async function pinOrigin(lon, lat, label, { pushUrl = true, preserveDestination 
   state.origin = { lon, lat, label: label || `${lat.toFixed(4)}, ${lon.toFixed(4)}` };
   state.grid   = null;
   state.isochrones = null;
-  state.meshWarp = null;
   state.destination = shouldRestoreDestination ? preservedDestination : null;
   state.trip = null;
   state.routeGeo = null;
@@ -300,7 +292,6 @@ async function pinOrigin(lon, lat, label, { pushUrl = true, preserveDestination 
   el.timeTooltip.hidden = true;
   el.reachCard.hidden = true;
   if (!shouldRestoreDestination) hideTripCard();
-  clearCanvas();
   clearRoute();
   if (!shouldRestoreDestination) clearDestinationMarker();
   else updateDestinationMarker();
@@ -364,21 +355,16 @@ async function pinOrigin(lon, lat, label, { pushUrl = true, preserveDestination 
   if (pushUrl && seq === _pinSeq) writeUrl();
 }
 
-// ── Redraw heatmap + layers ────────────────────────────────────────────────
+// ── Redraw map layers ──────────────────────────────────────────────────────
 function redraw() {
+  updateLegend();
   if (!state.grid) return;
-
-  const warp = state.showWarp;
-  state.meshWarp = warp ? buildMeshWarp(state.grid, state.maxMinutes) : null;
-  setBasemapOpacity(warp ? 0.48 : 0.96);
+  setBasemapOpacity(0.96);
 
   // Boundary
   const bndSrc = map.getSource("boundary-src");
   if (bndSrc && state.boundaryFc) {
-    bndSrc.setData(warp && state.meshWarp
-      ? transformGeoJSONWithMeshWarp(state.boundaryFc, state.meshWarp)
-      : state.boundaryFc
-    );
+    bndSrc.setData(state.boundaryFc);
   }
 
   updateContextLayerData();
@@ -387,28 +373,15 @@ function redraw() {
   updateOriginMarker();
   updateDestinationMarker();
   if (state.routeGeo) drawRoute(state.routeGeo);
-
-  // Heatmap canvas
-  if (state.showHeatmap) {
-    const gridToRender = warp ? warpedGrid(state.grid) : state.grid;
-    renderHeatmap(el.heatmapCanvas, gridToRender, map, { maxMinutes: state.maxMinutes, alpha: 0.82 });
-    el.heatmapLegend.hidden = false;
-    el.legendMax.textContent = `${state.maxMinutes}m`;
-  } else {
-    clearCanvas();
-    el.heatmapLegend.hidden = true;
-  }
 }
 
 function updateIsochroneData() {
   const src = map.getSource("isochrones-src");
   const ghostSrc = map.getSource("isochrones-ghost-src");
   if (!src) return;
-  const fc = state.isochrones
-    ? sortedIsochrones(state.showWarp && state.meshWarp ? transformGeoJSONWithMeshWarp(state.isochrones, state.meshWarp) : state.isochrones)
-    : empty();
+  const fc = state.isochrones ? sortedIsochrones(state.isochrones) : empty();
   src.setData(fc);
-  if (ghostSrc) ghostSrc.setData(state.showWarp && state.isochrones ? sortedIsochrones(state.isochrones) : empty());
+  if (ghostSrc) ghostSrc.setData(empty());
   const visibility = state.isochrones && state.showRings ? "visible" : "none";
   ["isochrones-fill", "isochrones-line", "isochrones-max-line"].forEach((id) => {
     if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", visibility);
@@ -416,36 +389,9 @@ function updateIsochroneData() {
   if (map.getLayer("isochrones-max-line")) {
     map.setFilter("isochrones-max-line", ["==", ["get", "contour"], state.maxMinutes]);
   }
-  const ghostVisibility = state.isochrones && state.showRings && state.showWarp ? "visible" : "none";
   ["isochrones-ghost-fill", "isochrones-ghost-line"].forEach((id) => {
-    if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", ghostVisibility);
+    if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "none");
   });
-}
-
-/**
- * Build a pseudo-grid where each cell's position is warped.
- * When MapLibre projects these warped coordinates, the heatmap colors
- * appear at the right screen positions for the warp view.
- */
-function warpedGrid(grid) {
-  const { west, south, east, north, cols, rows, times, origin } = grid;
-  const warpedTimes = [...times];
-  // The times are correct; we just warp the lng/lat when projecting.
-  // We do this by returning a synthetic grid whose coordinates ARE already warped,
-  // but since renderHeatmap uses map.project for positioning, we need to pass warped
-  // positions — handled by passing a modified grid with warped cell centers.
-  // Simplest: warp the underlying grid struct.
-  const cellW = (east  - west)  / Math.max(1, cols - 1);
-  const cellH = (north - south) / Math.max(1, rows - 1);
-  const valid = times.filter((t) => t != null);
-  const maxT  = valid.length ? Math.max(...valid) : state.maxMinutes * 60;
-
-  // We build a new grid by warping each cell centre's geographic coordinate.
-  // The "times" in the new grid remain unchanged (same color).
-  // But we store warped lng/lat as fake new west/south/east/north — not ideal.
-  // Instead: renderHeatmap should accept an array of (screen-space x,y,time) tuples.
-  // For now: return original grid — the warp is visible through the boundary geometry.
-  return grid;
 }
 
 // ── Reach card ─────────────────────────────────────────────────────────────
@@ -602,10 +548,6 @@ function eventWorldLngLat(e) {
   const lng = raw?.lng;
   const lat = raw?.lat;
   if (!Number.isFinite(lng) || !Number.isFinite(lat)) return { lng: NaN, lat: NaN };
-  if (state.showWarp && state.meshWarp?.inverseWarpPoint) {
-    const [worldLng, worldLat] = state.meshWarp.inverseWarpPoint([lng, lat]);
-    return { lng: worldLng, lat: worldLat };
-  }
   return { lng, lat };
 }
 
@@ -613,13 +555,11 @@ function clearOrigin() {
   state.origin = null;
   state.grid = null;
   state.isochrones = null;
-  state.meshWarp = null;
   clearRoute();
   clearDestination();
   map.getSource("origin-src")?.setData(empty());
   map.getSource("isochrones-src")?.setData(empty());
   map.getSource("isochrones-ghost-src")?.setData(empty());
-  clearCanvas();
   el.originLabel.hidden = true;
   el.reachCard.hidden = true;
   el.timeTooltip.hidden = true;
@@ -723,7 +663,7 @@ function attachEvents() {
   });
   map.on("mouseleave", () => { if (!state.origin) el.timeTooltip.hidden = true; });
 
-  // Re-render heatmap on map move/zoom (debounced so rapid panning is smooth)
+  // Re-render vector layers on map move/zoom (debounced so rapid panning is smooth)
   let _moveTimer = null;
   map.on("move", () => {
     if (_moveTimer) clearTimeout(_moveTimer);
@@ -748,16 +688,6 @@ function attachEvents() {
   });
 
   // Toggles
-  el.warpToggle.addEventListener("change", () => {
-    state.showWarp = el.warpToggle.checked;
-    redraw();
-    writeUrl();
-  });
-  el.heatmapToggle.addEventListener("change", () => {
-    state.showHeatmap = el.heatmapToggle.checked;
-    redraw();
-    writeUrl();
-  });
   el.ringsToggle.addEventListener("change", () => {
     state.showRings = el.ringsToggle.checked;
     redraw();
@@ -773,7 +703,7 @@ function attachEvents() {
   el.maxTimeRange.addEventListener("input", () => {
     state.maxMinutes = Number(el.maxTimeRange.value);
     el.maxTimeLabel.textContent = `${state.maxMinutes} min`;
-    if (el.legendMax) el.legendMax.textContent = `${state.maxMinutes}m`;
+    updateLegend();
   });
   el.maxTimeRange.addEventListener("change", () => {
     if (state.origin) {
@@ -831,7 +761,7 @@ function attachEvents() {
     writeUrl();
     try {
       if (navigator.share) {
-        await navigator.share({ url: location.href, title: "Jakarta Drive-Time Cartogram" });
+        await navigator.share({ url: location.href, title: "Jakarta Drive-Time Map" });
       } else {
         await navigator.clipboard.writeText(location.href);
         el.searchMeta.textContent = "Share URL copied!";
@@ -888,10 +818,7 @@ function drawRoute(geo) {
   if (!src || !geo) return;
   state.routeGeo = geo;
   const fc = { type: "FeatureCollection", features: [{ type: "Feature", properties: {}, geometry: geo }] };
-  src.setData(state.showWarp && state.grid
-    ? transformGeoJSONWithMeshWarp(fc, state.meshWarp)
-    : fc
-  );
+  src.setData(fc);
 }
 
 function clearRoute() {
@@ -900,11 +827,9 @@ function clearRoute() {
   if (src) src.setData(empty());
 }
 
-// ── Canvas helpers ─────────────────────────────────────────────────────────
-function clearCanvas() {
-  const ctx = el.heatmapCanvas.getContext("2d");
-  if (ctx) ctx.clearRect(0, 0, el.heatmapCanvas.width, el.heatmapCanvas.height);
-  el.heatmapLegend.hidden = true;
+function updateLegend() {
+  if (el.legendMax) el.legendMax.textContent = `${state.maxMinutes}m`;
+  if (el.timeLegend) el.timeLegend.hidden = false;
 }
 
 // ── Map helpers ────────────────────────────────────────────────────────────
@@ -931,11 +856,9 @@ function clearDestinationMarker() {
 }
 
 function pointFeatureCollection(lon, lat) {
-  let fc = { type: "FeatureCollection", features: [
+  return { type: "FeatureCollection", features: [
     { type: "Feature", properties: {}, geometry: { type: "Point", coordinates: [lon, lat] } }
   ]};
-  if (state.showWarp && state.meshWarp) fc = transformGeoJSONWithMeshWarp(fc, state.meshWarp);
-  return fc;
 }
 
 function setBasemapOpacity(opacity) {
@@ -1035,9 +958,7 @@ function updateContextLayerData() {
   map.getSource("corridors-src")?.setData(structuredClone(state.contextFc.corridors));
   map.getSource("congestion-src")?.setData(structuredClone(state.contextFc.congestion));
   map.getSource("signals-src")?.setData(structuredClone(state.contextFc.signals));
-  map.getSource("labels-src")?.setData(state.showWarp && state.grid
-    ? transformGeoJSONWithMeshWarp(state.contextFc.labels, state.meshWarp)
-    : structuredClone(state.contextFc.labels));
+  map.getSource("labels-src")?.setData(structuredClone(state.contextFc.labels));
 }
 
 function sortedIsochrones(fc) {
@@ -1050,8 +971,8 @@ function sortedIsochrones(fc) {
 function updateTravelTreeData() {
   const src = map.getSource("tree-src");
   if (!src || !state.grid) return;
-  const tree = buildTravelTree(state.grid, { maxMinutes: state.maxMinutes, stride: state.showWarp ? 1 : 2 });
-  src.setData(state.showWarp && state.meshWarp ? transformGeoJSONWithMeshWarp(tree, state.meshWarp) : tree);
+  const tree = buildTravelTree(state.grid, { maxMinutes: state.maxMinutes, stride: 2 });
+  src.setData(tree);
 }
 
 // ── Badge ──────────────────────────────────────────────────────────────────
@@ -1095,8 +1016,6 @@ function writeUrl() {
   const p = new URLSearchParams({
     m: state.mode,
     t: state.maxMinutes,
-    w: state.showWarp ? 1 : 0,
-    h: state.showHeatmap ? 1 : 0,
     ...(state.origin && { lat: state.origin.lat.toFixed(5), lon: state.origin.lon.toFixed(5) }),
   });
   history.replaceState(null, "", `?${p}`);
@@ -1106,10 +1025,7 @@ function restoreUrl() {
   const p = new URLSearchParams(location.search);
   if (!p.get("lat") || !p.get("lon")) return false;
   if (p.get("m")) { state.mode = p.get("m"); el.modeSelect.value = state.mode; }
-  if (p.get("t")) { state.maxMinutes = Number(p.get("t")); el.maxTimeRange.value = String(state.maxMinutes); el.maxTimeLabel.textContent = `${state.maxMinutes} min`; }
-  if (p.get("w")) { state.showWarp    = p.get("w") === "1"; el.warpToggle.checked    = state.showWarp; }
-  state.showHeatmap = p.get("h") === "1";
-  el.heatmapToggle.checked = state.showHeatmap;
+  if (p.get("t")) { state.maxMinutes = Number(p.get("t")); el.maxTimeRange.value = String(state.maxMinutes); el.maxTimeLabel.textContent = `${state.maxMinutes} min`; updateLegend(); }
   pinOrigin(Number(p.get("lon")), Number(p.get("lat")), `${(+p.get("lat")).toFixed(4)}, ${(+p.get("lon")).toFixed(4)}`, { pushUrl: false });
   return true;
 }
