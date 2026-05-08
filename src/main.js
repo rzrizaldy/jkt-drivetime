@@ -6,7 +6,7 @@ import maplibregl from "maplibre-gl";
 import { nominatimReverse, nominatimSearch } from "./api/nominatim.js";
 import { buildHistoricalJakartaGrid } from "./api/historicalJakarta.js";
 import { fetchIsochrones, fetchRoute, extractRoute } from "./api/valhalla.js";
-import { cacheSize, clearCache, getGrid, setGrid } from "./cache.js";
+import { getGrid, setGrid } from "./cache.js";
 import { CONTOUR_COLORS, CONTOUR_MINUTES, JAKARTA_CENTER, JABODETABEK_BBOX, useLiveRoutingMode } from "./config.js";
 import { buildTravelGridFromIsochrones, sampleTimeSeconds } from "./map/cartogram.js";
 import { buildTravelTree } from "./map/travelTree.js";
@@ -320,9 +320,7 @@ async function pinOrigin(lon, lat, label, { pushUrl = true, preserveDestination 
 
   // Check cache before showing spinner so message is correct
   const cacheProfile = gridCacheProfile();
-  const isCached = Boolean(getGrid(lat, lon, cacheProfile));
-  const modelName = useLiveRoutingMode() ? "OSM routing" : "Jakarta historical speeds";
-  showLoading(isCached ? "Loading cached grid…" : `Computing drive times (${modelName})…`);
+  showLoading("Computing drive times…");
 
   // Hard 45-second safety timeout — loading overlay will NEVER stay stuck
   const safetyTimer = setTimeout(() => {
@@ -365,7 +363,6 @@ async function pinOrigin(lon, lat, label, { pushUrl = true, preserveDestination 
     if (shouldRestoreDestination && state.destination) {
       setDestination(state.destination.lon, state.destination.lat, state.destination.label, { updateLabel: false });
     }
-    updateCacheBadge();
   } catch (err) {
     if (seq === _pinSeq) {
       el.searchMeta.textContent = `Error: ${err.message}`;
@@ -785,18 +782,6 @@ function attachEvents() {
   });
 
   // Share
-  // Cache clear button
-  const clearCacheBtn = $("clearCacheBtn");
-  if (clearCacheBtn) {
-    clearCacheBtn.addEventListener("click", () => {
-      clearCache();
-      const info = $("cacheInfo");
-      if (info) info.textContent = "Cache cleared.";
-      setTimeout(() => { if (info) info.textContent = "Computed grids are cached in localStorage for instant re-visit."; }, 2000);
-    });
-  }
-  updateCacheBadge();
-
   el.shareBtn.addEventListener("click", async () => {
     writeUrl();
     try {
@@ -1089,11 +1074,6 @@ function gridCacheProfile() {
   return useLiveRoutingMode()
     ? `valhalla-iso-${state.mode}-${state.traffic}-${state.maxMinutes}`
     : `historical-${state.mode}-${state.traffic}`;
-}
-
-function updateCacheBadge() {
-  const n = cacheSize();
-  el.searchMeta.textContent = n > 0 ? `${n} origin${n === 1 ? "" : "s"} cached — next visit is instant.` : "";
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
