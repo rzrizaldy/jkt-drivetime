@@ -7,7 +7,7 @@ import { nominatimReverse, nominatimSearch } from "./api/nominatim.js";
 import { buildHistoricalJakartaGrid } from "./api/historicalJakarta.js";
 import { fetchIsochrones, fetchRoute, extractRoute } from "./api/valhalla.js";
 import { cacheSize, clearCache, getGrid, setGrid } from "./cache.js";
-import { CONTOUR_COLORS, JAKARTA_CENTER, JABODETABEK_BBOX, useLiveRoutingMode } from "./config.js";
+import { CONTOUR_COLORS, CONTOUR_MINUTES, JAKARTA_CENTER, JABODETABEK_BBOX, useLiveRoutingMode } from "./config.js";
 import { buildTravelGridFromIsochrones, sampleTimeSeconds } from "./map/cartogram.js";
 import { buildTravelTree } from "./map/travelTree.js";
 
@@ -56,7 +56,7 @@ const el = {
   maxTimeLabel:   $("maxTimeLabel"),
   shareBtn:       $("shareBtn"),
   timeLegend:     $("timeLegend"),
-  legendMax:      $("legendMax"),
+  legendSteps:    $("legendSteps"),
   originLabel:    $("originLabel"),
   timeTooltip:    $("timeTooltip"),
   tooltipMin:     $("tooltipMin"),
@@ -828,8 +828,30 @@ function clearRoute() {
 }
 
 function updateLegend() {
-  if (el.legendMax) el.legendMax.textContent = `${state.maxMinutes}m`;
+  if (el.legendSteps) {
+    const steps = CONTOUR_MINUTES.filter((minutes) => minutes <= state.maxMinutes);
+    if (!steps.includes(state.maxMinutes)) steps.push(state.maxMinutes);
+    el.legendSteps.innerHTML = "";
+    for (const minutes of steps) {
+      const item = document.createElement("span");
+      item.className = "legend-step";
+      item.style.setProperty("--legend-color", colorForMinutes(minutes));
+      item.textContent = `${minutes}m`;
+      el.legendSteps.appendChild(item);
+    }
+  }
   if (el.timeLegend) el.timeLegend.hidden = false;
+}
+
+function colorForMinutes(minutes) {
+  if (CONTOUR_COLORS[minutes]) return CONTOUR_COLORS[minutes];
+  const stops = CONTOUR_MINUTES;
+  for (let i = 1; i < stops.length; i += 1) {
+    const prev = stops[i - 1];
+    const next = stops[i];
+    if (minutes <= next) return CONTOUR_COLORS[next] || CONTOUR_COLORS[prev];
+  }
+  return CONTOUR_COLORS[stops.at(-1)];
 }
 
 // ── Map helpers ────────────────────────────────────────────────────────────

@@ -532,18 +532,32 @@ h1 {
   white-space: nowrap;
 }
 
-.legend-bar {
-  width: 100px;
-  height: 7px;
-  border-radius: 999px;
-  background: linear-gradient(90deg,
-    rgb(220,69,37) 0%,
-    rgb(244,127,46) 20%,
-    rgb(255,196,79) 40%,
-    rgb(248,232,156) 62%,
-    rgb(149,188,211) 80%,
-    rgb(74,103,141) 100%
-  );
+.legend-title {
+  text-transform: uppercase;
+  letter-spacing: 0.11em;
+  font-size: 0.68rem;
+  color: var(--ink);
+}
+
+.legend-steps {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.legend-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.legend-step::before {
+  content: "";
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--legend-color);
+  border: 1px solid rgba(19,43,72,0.18);
 }
 
 /* ── Origin label ────────────────────────────────────────────────────────── */
@@ -761,7 +775,8 @@ h1 {
   .map-frame { aspect-ratio: 1/1.12; min-height: 520px; }
   .map-note-card { top: 14px; left: 14px; width: calc(100% - 84px); padding: 13px 14px; }
   .map-action-controls { top: 14px; right: 14px; }
-  .time-legend { left: 14px; transform: none; max-width: calc(100% - 28px); }
+  .time-legend { left: 14px; transform: none; max-width: calc(100% - 28px); white-space: normal; flex-wrap: wrap; }
+  .legend-steps { flex-wrap: wrap; row-gap: 4px; }
   .origin-label { max-width: 150px; }
   .settings-card { right: -10px; width: 260px; }
 }
