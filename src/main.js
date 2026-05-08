@@ -26,6 +26,7 @@ const CONTOUR_COLOR_EXPRESSION = [
 const state = {
   origin:     null,   // { lat, lon, label }
   mode:       "drive",
+  basemap:    "carto",
   maxMinutes: 60,
   showRings:  true,
   grid:       null,   // TravelGrid derived from Valhalla isochrones or fallback
@@ -52,6 +53,7 @@ const el = {
   statusText:     $("statusText"),
   ringsToggle:    $("ringsToggle"),
   modeSelect:     $("modeSelect"),
+  basemapSelect:  $("basemapSelect"),
   maxTimeRange:   $("maxTimeRange"),
   maxTimeLabel:   $("maxTimeLabel"),
   shareBtn:       $("shareBtn"),
@@ -87,9 +89,20 @@ const map = new maplibregl.Map({
         tileSize: 256,
         attribution: "© <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a>",
       },
+      carto: {
+        type: "raster",
+        tiles: [
+          "https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+          "https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+          "https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+        ],
+        tileSize: 256,
+        attribution: "© <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a> © <a href='https://carto.com/attributions'>CARTO</a>",
+      },
     },
     layers: [
-      { id: "osm-bg", type: "raster", source: "osm", paint: { "raster-opacity": 1 } },
+      { id: "osm-bg", type: "raster", source: "osm", layout: { visibility: "none" }, paint: { "raster-opacity": 1 } },
+      { id: "carto-bg", type: "raster", source: "carto", paint: { "raster-opacity": 1 } },
     ],
   },
   center: [...JAKARTA_CENTER],
@@ -113,6 +126,7 @@ function bootApp() {
   didBoot = true;
   attachEvents();
   updateBadge();
+  setBasemapStyle(state.basemap);
   loadContextLayers();
 
   if (!restoreUrl()) {
@@ -158,7 +172,7 @@ function setupMapLayers() {
   addLayer({ id: "isochrones-fill", type: "fill", source: "isochrones-src",
     paint: {
       "fill-color": CONTOUR_COLOR_EXPRESSION,
-      "fill-opacity": ["interpolate", ["linear"], ["get", "contour"], 10, 0.62, 90, 0.24]
+      "fill-opacity": ["interpolate", ["linear"], ["get", "contour"], 10, 0.34, 90, 0.12]
     } });
   addLayer({ id: "isochrones-line", type: "line", source: "isochrones-src",
     paint: {
@@ -361,7 +375,7 @@ async function pinOrigin(lon, lat, label, { pushUrl = true, preserveDestination 
 function redraw() {
   updateLegend();
   if (!state.grid) return;
-  setBasemapOpacity(0.96);
+  setBasemapOpacity(1);
 
   // Boundary
   const bndSrc = map.getSource("boundary-src");
@@ -701,6 +715,11 @@ function attachEvents() {
     state.mode = el.modeSelect.value;
     if (state.origin) pinOrigin(state.origin.lon, state.origin.lat, state.origin.label, { preserveDestination: Boolean(state.destination) });
   });
+  el.basemapSelect.addEventListener("change", () => {
+    state.basemap = el.basemapSelect.value;
+    setBasemapStyle(state.basemap);
+    writeUrl();
+  });
 
   // Max time range
   el.maxTimeRange.addEventListener("input", () => {
@@ -888,6 +907,15 @@ function pointFeatureCollection(lon, lat) {
 
 function setBasemapOpacity(opacity) {
   if (map.getLayer("osm-bg")) map.setPaintProperty("osm-bg", "raster-opacity", opacity);
+  if (map.getLayer("carto-bg")) map.setPaintProperty("carto-bg", "raster-opacity", opacity);
+}
+
+function setBasemapStyle(style) {
+  const next = style === "osm" ? "osm" : "carto";
+  state.basemap = next;
+  if (el.basemapSelect) el.basemapSelect.value = next;
+  if (map.getLayer("osm-bg")) map.setLayoutProperty("osm-bg", "visibility", next === "osm" ? "visible" : "none");
+  if (map.getLayer("carto-bg")) map.setLayoutProperty("carto-bg", "visibility", next === "carto" ? "visible" : "none");
 }
 
 function empty() { return { type: "FeatureCollection", features: [] }; }
@@ -1040,6 +1068,7 @@ function formatDistance(meters) {
 function writeUrl() {
   const p = new URLSearchParams({
     m: state.mode,
+    map: state.basemap,
     t: state.maxMinutes,
     ...(state.origin && { lat: state.origin.lat.toFixed(5), lon: state.origin.lon.toFixed(5) }),
   });
@@ -1050,6 +1079,7 @@ function restoreUrl() {
   const p = new URLSearchParams(location.search);
   if (!p.get("lat") || !p.get("lon")) return false;
   if (p.get("m")) { state.mode = p.get("m"); el.modeSelect.value = state.mode; }
+  if (p.get("map")) setBasemapStyle(p.get("map"));
   if (p.get("t")) { state.maxMinutes = Number(p.get("t")); el.maxTimeRange.value = String(state.maxMinutes); el.maxTimeLabel.textContent = `${state.maxMinutes} min`; updateLegend(); }
   pinOrigin(Number(p.get("lon")), Number(p.get("lat")), `${(+p.get("lat")).toFixed(4)}, ${(+p.get("lon")).toFixed(4)}`, { pushUrl: false });
   return true;
