@@ -130,7 +130,7 @@
 
             <div class="map-note-card">
               <p class="map-note-kicker">How it works</p>
-              <p>Click the map to move the origin. Cartogram mode pulls equal-minute Valhalla rings into time-space.</p>
+              <p>Search sets the origin. Click the map after that to calculate travel time to a destination.</p>
             </div>
 
             <!-- Origin pin label -->
@@ -180,6 +180,14 @@
             <span class="reach-label">60-Minute Road Reach</span>
             <strong id="reachArea" class="reach-value">—</strong>
             <span id="reachMeta" class="reach-meta">of Jabodetabek by road</span>
+          </div>
+
+          <div id="tripCard" class="trip-card" hidden>
+            <div class="trip-card-head">
+              <span class="trip-label">Point-to-point insight</span>
+              <strong id="tripMinutes">—</strong>
+            </div>
+            <p id="tripSummary">Click a destination on the map to calculate travel time from the pinned origin.</p>
           </div>
         </section>
 

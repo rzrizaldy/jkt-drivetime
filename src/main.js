@@ -23,6 +23,8 @@ const state = {
   grid:       null,   // TravelGrid derived from Valhalla isochrones or fallback
   isochrones: null,
   meshWarp:   null,
+  destination:null,
+  trip:       null,
   boundaryFc: null,
   contextFc:  { corridors: empty(), congestion: empty(), signals: empty(), labels: empty() },
   contextRaw: null,
@@ -56,6 +58,9 @@ const el = {
   apiBadge:       $("apiBadge"),
   reachCard:      $("reachCard"),
   reachArea:      $("reachArea"),
+  tripCard:       $("tripCard"),
+  tripMinutes:    $("tripMinutes"),
+  tripSummary:    $("tripSummary"),
 };
 
 // ── Map ────────────────────────────────────────────────────────────────────
@@ -123,6 +128,17 @@ function setupMapLayers() {
       "circle-stroke-color": "rgba(23,48,77,0.85)", "circle-stroke-width": 3 } });
   addLayer({ id: "origin-dot", type: "circle", source: "origin-src",
     paint: { "circle-radius": 5, "circle-color": "#fff8ef" } });
+
+  addSource("destination-src", { type: "geojson", data: empty() });
+  addLayer({ id: "destination-halo", type: "circle", source: "destination-src",
+    paint: {
+      "circle-radius": 12,
+      "circle-color": "rgba(223,96,50,0.18)",
+      "circle-stroke-color": "rgba(223,96,50,0.92)",
+      "circle-stroke-width": 3
+    } });
+  addLayer({ id: "destination-dot", type: "circle", source: "destination-src",
+    paint: { "circle-radius": 4.5, "circle-color": "#fff8ef" } });
 
   // Jabodetabek boundary
   addSource("boundary-src", { type: "geojson", data: empty() });
@@ -243,6 +259,8 @@ async function pinOrigin(lon, lat, label, { pushUrl = true } = {}) {
   state.grid   = null;
   state.isochrones = null;
   state.meshWarp = null;
+  state.destination = null;
+  state.trip = null;
   state.routeGeo = null;
 
   updateOriginMarker(lon, lat);
@@ -251,8 +269,10 @@ async function pinOrigin(lon, lat, label, { pushUrl = true } = {}) {
   el.statusText.textContent = `Pinned near ${state.origin.label}`;
   el.timeTooltip.hidden = true;
   el.reachCard.hidden = true;
+  hideTripCard();
   clearCanvas();
   clearRoute();
+  clearDestinationMarker();
 
   // Check cache before showing spinner so message is correct
   const cacheProfile = gridCacheProfile();
@@ -330,6 +350,9 @@ function redraw() {
   updateContextLayerData();
   updateTravelTreeData();
   updateIsochroneData();
+  updateOriginMarker();
+  updateDestinationMarker();
+  if (state.routeGeo) drawRoute(state.routeGeo);
 
   // Heatmap canvas
   if (state.showHeatmap) {
@@ -401,9 +424,71 @@ function showReach() {
   if (metaEl) metaEl.textContent = `of sampled points reachable in ${state.maxMinutes} min`;
 }
 
+async function setDestination(lon, lat, label) {
+  if (!state.origin || !state.grid) return;
+  state.destination = { lon, lat, label: label || `${lat.toFixed(4)}, ${lon.toFixed(4)}` };
+  updateDestinationMarker();
+
+  const sampledSeconds = sampleTimeSeconds(state.grid, lon, lat);
+  showTripCard({
+    seconds: sampledSeconds,
+    exact: false,
+    loading: useLiveRoutingMode(),
+    destinationLabel: state.destination.label,
+  });
+
+  const straightLine = {
+    type: "LineString",
+    coordinates: [[state.origin.lon, state.origin.lat], [lon, lat]],
+  };
+  drawRoute(straightLine);
+
+  if (!useLiveRoutingMode()) return;
+  try {
+    const route = await extractRoute(await fetchRoute({ from: state.origin, to: { lat, lon }, mode: state.mode }));
+    if (route.geometry) drawRoute(route.geometry);
+    showTripCard({
+      seconds: route.seconds || sampledSeconds,
+      meters: route.meters,
+      exact: Boolean(route.seconds),
+      loading: false,
+      destinationLabel: state.destination.label,
+    });
+  } catch {
+    showTripCard({
+      seconds: sampledSeconds,
+      exact: false,
+      loading: false,
+      destinationLabel: state.destination.label,
+    });
+  }
+  writeUrl();
+}
+
+function showTripCard({ seconds, meters = null, exact = false, loading = false, destinationLabel }) {
+  if (!el.tripCard) return;
+  const minutes = Number.isFinite(seconds) ? Math.max(1, Math.round(seconds / 60)) : null;
+  const mode = modeLabel(state.mode);
+  el.tripCard.hidden = false;
+  el.tripMinutes.textContent = loading && minutes == null
+    ? "Calculating..."
+    : minutes == null
+      ? `>${state.maxMinutes} min`
+      : `${exact ? "" : "~"}${minutes} min`;
+  const distanceText = Number.isFinite(meters) && meters > 0 ? `, ${formatDistance(meters)}` : "";
+  const confidence = exact ? "Valhalla route" : "isochrone estimate";
+  el.tripSummary.textContent = `${state.origin.label} to ${destinationLabel}: ${el.tripMinutes.textContent} away by ${mode}${distanceText} (${confidence}).`;
+  el.tooltipMin.textContent = minutes == null ? `>${state.maxMinutes}` : `~${minutes}`;
+  el.timeTooltip.hidden = false;
+}
+
+function hideTripCard() {
+  if (el.tripCard) el.tripCard.hidden = true;
+}
+
 // ── Events ─────────────────────────────────────────────────────────────────
 function attachEvents() {
-  // Map click → pin origin
+  // First map click pins an origin. Later clicks probe origin-to-destination time.
   map.on("click", async (e) => {
     if ($("settingsMenu").hasAttribute("open")) return;
     const { lng, lat } = e.lngLat;
@@ -413,7 +498,11 @@ function attachEvents() {
       const top = r?.results?.[0];
       if (top?.formatted) label = shortenLabel(top.formatted);
     } catch { /* silent */ }
-    pinOrigin(lng, lat, label);
+    if (state.origin && state.grid) {
+      setDestination(lng, lat, label);
+    } else {
+      pinOrigin(lng, lat, label);
+    }
   });
 
   // Right-click / ctrl+click → draw route from pinned origin to clicked point
@@ -421,16 +510,13 @@ function attachEvents() {
     if (!state.origin || !state.grid) return;
     e.preventDefault();
     const { lng, lat } = e.lngLat;
-    const secs = sampleTimeSeconds(state.grid, lng, lat);
-    el.tooltipMin.textContent = secs != null ? `~${Math.round(secs / 60)}` : `>${state.maxMinutes}`;
-    el.timeTooltip.hidden = false;
-    if (useLiveRoutingMode()) {
-      try {
-        const rt = await extractRoute(await fetchRoute({ from: state.origin, to: { lat, lon: lng }, mode: state.mode }));
-        drawRoute(rt.geometry);
-        el.tooltipMin.textContent = `~${Math.round(rt.seconds / 60)}`;
-      } catch { /* silent */ }
-    }
+    let label = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+    try {
+      const r = await nominatimReverse(lat, lng);
+      const top = r?.results?.[0];
+      if (top?.formatted) label = shortenLabel(top.formatted);
+    } catch { /* silent */ }
+    setDestination(lng, lat, label);
   });
 
   // Hover → show travel time (from grid)
@@ -608,6 +694,7 @@ function showSearchResults(results) {
 function drawRoute(geo) {
   const src = map.getSource("route-src");
   if (!src || !geo) return;
+  state.routeGeo = geo;
   const fc = { type: "FeatureCollection", features: [{ type: "Feature", properties: {}, geometry: geo }] };
   src.setData(state.showWarp && state.grid
     ? transformGeoJSONWithMeshWarp(fc, state.meshWarp)
@@ -616,6 +703,7 @@ function drawRoute(geo) {
 }
 
 function clearRoute() {
+  state.routeGeo = null;
   const src = map.getSource("route-src");
   if (src) src.setData(empty());
 }
@@ -628,11 +716,34 @@ function clearCanvas() {
 }
 
 // ── Map helpers ────────────────────────────────────────────────────────────
-function updateOriginMarker(lon, lat) {
+function updateOriginMarker(lon = state.origin?.lon, lat = state.origin?.lat) {
   const src = map.getSource("origin-src");
-  if (src) src.setData({ type: "FeatureCollection", features: [
+  if (!src || !Number.isFinite(lon) || !Number.isFinite(lat)) return;
+  src.setData(pointFeatureCollection(lon, lat));
+}
+
+function updateDestinationMarker() {
+  const src = map.getSource("destination-src");
+  if (!src) return;
+  if (!state.destination) {
+    src.setData(empty());
+    return;
+  }
+  src.setData(pointFeatureCollection(state.destination.lon, state.destination.lat));
+}
+
+function clearDestinationMarker() {
+  state.destination = null;
+  const src = map.getSource("destination-src");
+  if (src) src.setData(empty());
+}
+
+function pointFeatureCollection(lon, lat) {
+  let fc = { type: "FeatureCollection", features: [
     { type: "Feature", properties: {}, geometry: { type: "Point", coordinates: [lon, lat] } }
-  ]});
+  ]};
+  if (state.showWarp && state.meshWarp) fc = transformGeoJSONWithMeshWarp(fc, state.meshWarp);
+  return fc;
 }
 
 function setBasemapOpacity(opacity) {
@@ -771,6 +882,20 @@ function updateCacheBadge() {
 function shortenLabel(label) {
   const parts = label.split(",").map((p) => p.trim());
   return parts.slice(0, 3).join(", ");
+}
+
+function modeLabel(mode) {
+  return ({
+    drive: "drive",
+    motorcycle: "motorcycle",
+    bicycle: "bicycle",
+    walk: "walk",
+  })[mode] || mode;
+}
+
+function formatDistance(meters) {
+  if (meters >= 1000) return `${(meters / 1000).toFixed(meters >= 10_000 ? 0 : 1)} km`;
+  return `${Math.round(meters)} m`;
 }
 
 // ── URL state ──────────────────────────────────────────────────────────────
