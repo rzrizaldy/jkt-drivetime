@@ -21,9 +21,11 @@ const CONTOUR_COLOR_EXPRESSION = [
   75, CONTOUR_COLORS[75],
   90, CONTOUR_COLORS[90],
 ];
-const TRAFFIC_PROFILES = Object.freeze({
-  peak: { label: "peak", multiplier: 1.8 },
-  offpeak: { label: "off-peak", multiplier: 1.15 },
+const TRAFFIC_MULTIPLIERS = Object.freeze({
+  drive: { peak: 1.8, offpeak: 1.15 },
+  motorcycle: { peak: 1.6, offpeak: 1.05 },
+  bicycle: { peak: 1.4, offpeak: 1 },
+  walk: { peak: 1, offpeak: 1 },
 });
 
 // ── State ──────────────────────────────────────────────────────────────────
@@ -488,7 +490,8 @@ function showTripCard({ seconds, meters = null, exact = false, loading = false, 
       ? `>${state.maxMinutes} min`
       : `${exact ? "" : "~"}${minutes} min`;
   const distanceText = Number.isFinite(meters) && meters > 0 ? formatDistance(meters) : "distance pending";
-  if (el.tripDetails) el.tripDetails.textContent = `${distanceText} · ${mode} · ${trafficProfile().label}`;
+  const profileLabel = trafficProfile().label;
+  if (el.tripDetails) el.tripDetails.textContent = [distanceText, mode, profileLabel].filter(Boolean).join(" · ");
   el.tooltipMin.textContent = minutes == null ? `>${state.maxMinutes}` : `~${minutes}`;
   el.timeTooltip.hidden = false;
 }
@@ -879,8 +882,14 @@ function colorForMinutes(minutes) {
   return CONTOUR_COLORS[stops.at(-1)];
 }
 
-function trafficProfile() {
-  return TRAFFIC_PROFILES[state.traffic] || TRAFFIC_PROFILES.peak;
+function trafficProfile(mode = state.mode) {
+  const profile = state.traffic === "offpeak" ? "offpeak" : "peak";
+  const modeMultipliers = TRAFFIC_MULTIPLIERS[mode] || TRAFFIC_MULTIPLIERS.drive;
+  const multiplier = modeMultipliers[profile] ?? 1;
+  return {
+    label: mode === "walk" ? "" : (profile === "offpeak" ? "off-peak" : "peak"),
+    multiplier,
+  };
 }
 
 function scaleTrafficSeconds(seconds) {
@@ -1112,7 +1121,7 @@ function restoreUrl() {
   const p = new URLSearchParams(location.search);
   if (!p.get("lat") || !p.get("lon")) return false;
   if (p.get("m")) { state.mode = p.get("m"); el.modeSelect.value = state.mode; }
-  if (p.get("traffic") && TRAFFIC_PROFILES[p.get("traffic")]) {
+  if (p.get("traffic") === "peak" || p.get("traffic") === "offpeak") {
     state.traffic = p.get("traffic");
     el.trafficSelect.value = state.traffic;
   }
