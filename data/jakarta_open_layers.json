@@ -1,0 +1,103 @@
+{
+  "meta": {
+    "title": "Jakarta open traffic context",
+    "observed_scope": "DKI Jakarta",
+    "estimated_scope": "Jabodetabek outside DKI",
+    "sources": [
+      "Satu Data Jakarta road speed, congestion, TransJakarta, MRT, and traffic-light datasets",
+      "data.go.id Jakarta traffic dataset index",
+      "OpenStreetMap routing via Valhalla (self-hosted) and raster tiles"
+    ],
+    "note": "Small curated seed used by the frontend. Replace through scripts/fetch_satudata.py for a refreshed dataset."
+  },
+  "speed_corridors": [
+    {
+      "name": "Gajah Mada corridor",
+      "speed_kph": 22.58,
+      "source_slug": "kecepatan-rata-rata-di-ruas-jalan-yang-dikenakan-kebijakan-pembatasan-lalu-lintas-pada-jam-sibuk",
+      "path": [
+        [-6.1694, 106.8173],
+        [-6.1627, 106.8199],
+        [-6.1547, 106.8211]
+      ]
+    },
+    {
+      "name": "Hayam Wuruk corridor",
+      "speed_kph": 21.43,
+      "source_slug": "kecepatan-rata-rata-di-ruas-jalan-yang-dikenakan-kebijakan-pembatasan-lalu-lintas-pada-jam-sibuk",
+      "path": [
+        [-6.1574, 106.8187],
+        [-6.1499, 106.8176],
+        [-6.1419, 106.8148]
+      ]
+    },
+    {
+      "name": "Majapahit corridor",
+      "speed_kph": 13.5,
+      "source_slug": "kecepatan-rata-rata-di-ruas-jalan-yang-dikenakan-kebijakan-pembatasan-lalu-lintas-pada-jam-sibuk",
+      "path": [
+        [-6.1713, 106.8219],
+        [-6.1708, 106.8284],
+        [-6.1703, 106.8342]
+      ]
+    },
+    {
+      "name": "Sudirman-Thamrin spine",
+      "speed_kph": 25.2,
+      "source_slug": "kecepatan-rata-rata-di-41-koridor-jalan-utama-pada-jam-sibuk-tahun-2022",
+      "path": [
+        [-6.1938, 106.8229],
+        [-6.2146, 106.8178],
+        [-6.2297, 106.8085]
+      ]
+    }
+  ],
+  "congestion_points": [
+    {
+      "name": "Harmoni",
+      "lat": -6.162687,
+      "lon": 106.81992,
+      "note": "Central transfer and road bottleneck"
+    },
+    {
+      "name": "Manggarai",
+      "lat": -6.209745,
+      "lon": 106.850673,
+      "note": "Rail station frontage and arterial merge"
+    },
+    {
+      "name": "Blok M",
+      "lat": -6.2443,
+      "lon": 106.7992,
+      "note": "Transit hub and commercial traffic"
+    },
+    {
+      "name": "Cawang",
+      "lat": -6.2463,
+      "lon": 106.8737,
+      "note": "Inner ring road interchange pressure"
+    },
+    {
+      "name": "Tomang",
+      "lat": -6.1765,
+      "lon": 106.7926,
+      "note": "West Jakarta arterial interchange"
+    }
+  ],
+  "traffic_lights": [
+    { "name": "Bundaran HI", "lat": -6.1944, "lon": 106.8230 },
+    { "name": "Sarinah", "lat": -6.1872, "lon": 106.8238 },
+    { "name": "CSW", "lat": -6.2431, "lon": 106.7982 },
+    { "name": "Kuningan", "lat": -6.2206, "lon": 106.8294 },
+    { "name": "Pancoran", "lat": -6.2437, "lon": 106.8428 },
+    { "name": "Rawamangun", "lat": -6.1937, "lon": 106.8846 }
+  ],
+  "city_labels": [
+    { "name": "Jakarta", "lat": -6.2088, "lon": 106.8456 },
+    { "name": "Bogor", "lat": -6.5971, "lon": 106.8060 },
+    { "name": "Depok", "lat": -6.4025, "lon": 106.7942 },
+    { "name": "Tangerang", "lat": -6.1783, "lon": 106.6319 },
+    { "name": "Bekasi", "lat": -6.2383, "lon": 106.9756 },
+    { "name": "South Tangerang", "lat": -6.2886, "lon": 106.7179 }
+  ]
+}
