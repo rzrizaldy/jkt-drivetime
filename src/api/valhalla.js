@@ -4,7 +4,7 @@ const BASE = (import.meta.env?.VITE_VALHALLA_SHIM_URL || "/api/valhalla").replac
 const MAX_CONTOURS_PER_REQUEST = 4;
 
 async function post(endpoint, body) {
-  const path = BASE.includes("/api/valhalla") || BASE.endsWith("/v1")
+  const path = BASE.includes("/api/valhalla") || BASE.includes("valhalla1.openstreetmap.de")
     ? endpoint.replace(/^\/v1/, "")
     : endpoint;
   const res = await fetch(`${BASE}${path}`, {
