@@ -15,7 +15,7 @@ Repository: <https://github.com/rzrizaldy/jkt-drivetime>
 - Valhalla isochrone polygons for 10, 20, 30, 45, 60, 75, and 90 minute bands.
 - Time-color legend stays on the map so the contour colors are readable.
 - Peak/off-peak adjustment defaults to peak. Walk is not adjusted. Motorcycle and bicycle use lighter multipliers than car.
-- Basemap toggle between the clearer Carto-style map and OpenStreetMap.
+- Basemap toggle between a minimal Esri Light Gray Canvas and OpenStreetMap.
 - Jakarta context layers from local open-data files under `public/data`.
 - Browser favicon and touch icons included.
 

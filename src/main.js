@@ -33,7 +33,7 @@ const state = {
   origin:     null,   // { lat, lon, label }
   mode:       "drive",
   traffic:    "peak",
-  basemap:    "carto",
+  basemap:    "esri",
   maxMinutes: 60,
   showRings:  true,
   grid:       null,   // TravelGrid derived from Valhalla isochrones or fallback
@@ -97,20 +97,17 @@ const map = new maplibregl.Map({
         tileSize: 256,
         attribution: "© <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a>",
       },
-      carto: {
+      esri: {
         type: "raster",
-        tiles: [
-          "https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
-          "https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
-          "https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
-        ],
+        tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}"],
         tileSize: 256,
-        attribution: "© <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a> © <a href='https://carto.com/attributions'>CARTO</a>",
+        maxzoom: 16,
+        attribution: "Tiles © <a href='https://www.esri.com'>Esri</a>, HERE, Garmin, © <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a> contributors and the GIS user community",
       },
     },
     layers: [
       { id: "osm-bg", type: "raster", source: "osm", layout: { visibility: "none" }, paint: { "raster-opacity": 1 } },
-      { id: "carto-bg", type: "raster", source: "carto", paint: { "raster-opacity": 1 } },
+      { id: "esri-bg", type: "raster", source: "esri", paint: { "raster-opacity": 1 } },
     ],
   },
   center: [...JAKARTA_CENTER],
@@ -955,15 +952,15 @@ function pointFeatureCollection(lon, lat) {
 
 function setBasemapOpacity(opacity) {
   if (map.getLayer("osm-bg")) map.setPaintProperty("osm-bg", "raster-opacity", opacity);
-  if (map.getLayer("carto-bg")) map.setPaintProperty("carto-bg", "raster-opacity", opacity);
+  if (map.getLayer("esri-bg")) map.setPaintProperty("esri-bg", "raster-opacity", opacity);
 }
 
 function setBasemapStyle(style) {
-  const next = style === "osm" ? "osm" : "carto";
+  const next = style === "osm" ? "osm" : "esri";
   state.basemap = next;
   if (el.basemapSelect) el.basemapSelect.value = next;
   if (map.getLayer("osm-bg")) map.setLayoutProperty("osm-bg", "visibility", next === "osm" ? "visible" : "none");
-  if (map.getLayer("carto-bg")) map.setLayoutProperty("carto-bg", "visibility", next === "carto" ? "visible" : "none");
+  if (map.getLayer("esri-bg")) map.setLayoutProperty("esri-bg", "visibility", next === "esri" ? "visible" : "none");
 }
 
 function empty() { return { type: "FeatureCollection", features: [] }; }
